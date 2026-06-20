@@ -9,7 +9,7 @@
 
 ---
 
-[![FastSoftware3D Showcase](docs/screensho.png)](docs/screensho.png)
+[![FastSoftware3D Showcase](docs/screenshot.png)](docs/screenshot.png)
 
 ---
 
