@@ -1,11 +1,11 @@
-# FastSoftware3D [ALPHA-2026-06] â€” High-Performance Software 3D Renderer & Console Terminal Engine for Java
+# FastSoftware3D [ALPHA-2026-06] — High-Performance Software 3D Renderer & Console Terminal Engine for Java
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://www.java.com)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010+-lightgrey.svg)]()
 [![JitPack](https://img.shields.io/badge/JitPack-ready-green.svg)](https://jitpack.io/#andrestubbe/FastSoftware3D)
 
-**âš¡ A micro-optimized, zero-dependency software 3D rendering pipeline and console terminal engine for Java. Supports real-time perspective-correct texture mapping, ANSI true color rendering, post-processing effects, animations, and console hooks.**
+**⚡ A micro-optimized, zero-dependency software 3D rendering pipeline and console terminal engine for Java. Supports real-time perspective-correct texture mapping, ANSI true color rendering, post-processing effects, animations, and console hooks.**
 
 ---
 
@@ -14,16 +14,16 @@
 ---
 
 ## Key Features
-- **ðŸš€ Hybrid Viewports** â€” Output to standard desktop windows (Swing) or directly to raw consoles in 24-bit True Color.
-- **âš¡ Native Rasterization** â€” Dynamic C++ JNI rasterizer kernel with automatic pure-Java fallback.
-- **ðŸ“¦ Consolidated Engine** â€” Unifies math, culling, timelines, UTF-8/ASCII processing, ANSI parser, and Win32 console hooks.
-- **ðŸ”® Post-Effects** â€” Built-in linear depth-based fog, Anti-Aliasing (FXAA), SSAA downsampling, and Barrel/Fisheye lens distortion.
+- **🚀 Hybrid Viewports** — Output to standard desktop windows (Swing) or directly to raw consoles in 24-bit True Color.
+- **⚡ Native Rasterization** — Dynamic C++ JNI rasterizer kernel with automatic pure-Java fallback.
+- **📦 Consolidated Engine** — Unifies math, culling, timelines, UTF-8/ASCII processing, ANSI parser, and Win32 console hooks.
+- **🔮 Post-Effects** — Built-in linear depth-based fog, Anti-Aliasing (FXAA), SSAA downsampling, and Barrel/Fisheye lens distortion.
 
 ---
 
-## Quick Start â€” Desktop Demo
+## Quick Start — Desktop Demo
 
-`java
+```java
 import fastsoftware3d.camera.Camera;
 import fastsoftware3d.core.Framebuffer;
 import fastsoftware3d.core.RenderPipeline;
@@ -58,11 +58,11 @@ public class Demo {
         pipeline.postProcess();
     }
 }
-`
+```
 
 ---
 
-## ðŸ“Š Performance
+## 📊 Performance
 FastSoftware3D uses JNI-accelerated scanline rasterization for maximum console throughput:
 
 | Rasterization Type | Frame Time (640x480) | Speedup |
@@ -74,16 +74,16 @@ FastSoftware3D uses JNI-accelerated scanline rasterization for maximum console t
 
 ## Technical Examples & Hero Demos
 Run the automated batch scripts to preview the engine in action:
-*   un-demo.bat â€” Launches the interactive desktop 3D window.
-*   un-terminal-demo.bat â€” Renders a rotating 3D scene inside the cmd/Windows Terminal.
-*   un-wolf-terminal-demo.bat â€” Renders a textured first-person Wolfenstein-like level in the terminal.
+*   run-demo.bat — Launches the interactive desktop 3D window.
+*   run-terminal-demo.bat — Renders a rotating 3D scene inside the cmd/Windows Terminal.
+*   run-wolf-terminal-demo.bat — Renders a textured first-person Wolfenstein-like level in the terminal.
 
 ---
 
 ## Installation
 Add the JitPack repository and the dependencies to your pom.xml:
 
-`xml
+```xml
 <repositories>
     <repository>
         <id>jitpack.io</id>
@@ -98,9 +98,9 @@ Add the JitPack repository and the dependencies to your pom.xml:
         <version>main-SNAPSHOT</version>
     </dependency>
 </dependencies>
-`
+```
 
 ---
 
 ## License
-FastSoftware3D is released under the **MIT License**.
+FastSoftware3D is released under the **MIT License**.
