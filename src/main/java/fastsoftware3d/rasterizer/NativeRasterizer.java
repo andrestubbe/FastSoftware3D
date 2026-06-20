@@ -43,7 +43,8 @@ public final class NativeRasterizer implements TriangleRasterizer {
                     x0, y0, z0, u0, v0,
                     x1, y1, z1, u1, v1,
                     x2, y2, z2, u2, v2,
-                    fb.pixels, fb.zBuffer, material.texels, fb.width, fb.height
+                    fb.pixels, fb.zBuffer, material.texels, fb.width, fb.height,
+                    material.texWidth, material.texHeight
             );
         } catch (UnsatisfiedLinkError e) {
             nativeAvailable = false;
@@ -59,6 +60,7 @@ public final class NativeRasterizer implements TriangleRasterizer {
             float x0, float y0, float z0, float u0, float v0,
             float x1, float y1, float z1, float u1, float v1,
             float x2, float y2, float z2, float u2, float v2,
-            int[] pixels, float[] zBuffer, int[] texels, int width, int height
+            int[] pixels, float[] zBuffer, int[] texels, int width, int height,
+            int texWidth, int texHeight
     );
 }

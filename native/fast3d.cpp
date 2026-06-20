@@ -20,7 +20,7 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
     jfloat x1, jfloat y1, jfloat z1, jfloat u1, jfloat v1,
     jfloat x2, jfloat y2, jfloat z2, jfloat u2, jfloat v2,
     jintArray pixelsArray, jfloatArray zBufferArray, jintArray textureArray,
-    jint width, jint height
+    jint width, jint height, jint texWidth, jint texHeight
 ) {
     // Pin JVM arrays
     jint* pixels = (jint*)env->GetPrimitiveArrayCritical(pixelsArray, nullptr);
@@ -76,9 +76,9 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
                             u = u - std::floor(u);
                             v = v - std::floor(v);
 
-                            int texX = (int)(u * (TEX_SIZE - 1));
-                            int texY = (int)(v * (TEX_SIZE - 1));
-                            int texColor = texture[texY * TEX_SIZE + texX];
+                            int texX = (int)(u * (texWidth - 1));
+                            int texY = (int)(v * (texHeight - 1));
+                            int texColor = texture[texY * texWidth + texX];
 
                             // Linear depth fog calculation (matching JavaRasterizer)
                             float fogNear = 750.0f;
