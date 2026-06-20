@@ -1,77 +1,89 @@
-# FastSoftware3D — High-performance software 3D renderer and console terminal engine for Java
+# FastSoftware3D [ALPHA-2026-06] â€” High-Performance Software 3D Renderer & Console Terminal Engine for Java
 
-**High-performance native Windows XXX API for Java.**
-
-[![Build](https://img.shields.io/github/actions/workflow/status/andrestubbe/FastSoftware3D/maven.yml?branch=main)](https://github.com/andrestubbe/FastSoftware3D/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://www.java.com)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010+-lightgrey.svg)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![JitPack](https://jitpack.io/v/andrestubbe/FastSoftware3D.svg)](https://jitpack.io/#andrestubbe/FastSoftware3D)
+[![JitPack](https://img.shields.io/badge/JitPack-ready-green.svg)](https://jitpack.io/#andrestubbe/FastSoftware3D)
 
-[Insert Mission Statement here: FastSoftware3D is the high-performance substrate of the FastJava ecosystem. It provides the hand-tuned native primitives required for...]
+**âš¡ A micro-optimized, zero-dependency software 3D rendering pipeline and console terminal engine for Java. Supports real-time perspective-correct texture mapping, ANSI true color rendering, post-processing effects, animations, and console hooks.**
 
-```java
-// Quick Start — Example
-import fastxxx.FastSoftware3D;
+---
 
-public class Demo {
-    public static void main(String[] args) {
-        // Your code here
-    }
-}
-```
-
-## Table of Contents
-- [Key Features](#key-features)
-- [Performance](#performance)
-- [API Quick Reference](#api-quick-reference)
-- [Installation](#installation)
-- [Technical Examples & Hero Demos](#technical-examples--hero-demos)
-- [Documentation](#documentation)
-- [Platform Support](#platform-support)
-- [License](#license)
+[![FastSoftware3D Showcase](docs/screenshot.png)](docs/screenshot.png)
 
 ---
 
 ## Key Features
--   **🚀 Native Performance** — Direct Win32/DirectX access via JNI.
--   **⚡ Zero Overhead** — No polling, purely event-driven callbacks.
--   **📦 Zero Dependencies** — Just requires Java 17+ and Windows.
+- **ðŸš€ Hybrid Viewports** â€” Output to standard desktop windows (Swing) or directly to raw consoles in 24-bit True Color.
+- **âš¡ Native Rasterization** â€” Dynamic C++ JNI rasterizer kernel with automatic pure-Java fallback.
+- **ðŸ“¦ Consolidated Engine** â€” Unifies math, culling, timelines, UTF-8/ASCII processing, ANSI parser, and Win32 console hooks.
+- **ðŸ”® Post-Effects** â€” Built-in linear depth-based fog, Anti-Aliasing (FXAA), SSAA downsampling, and Barrel/Fisheye lens distortion.
 
 ---
 
-## 📊 Performance
-FastSoftware3D is significantly faster than standard Java alternatives:
+## Quick Start â€” Desktop Demo
 
-| Operation | Standard Java | FastSoftware3D Native | Speedup |
-|-----------|---------------|----------------|---------|
-| Action A  | 50 ms         | 5 ms           | **10x** |
-| Action B  | 120 ms        | 12 ms          | **10x** |
+`java
+import fastsoftware3d.camera.Camera;
+import fastsoftware3d.core.Framebuffer;
+import fastsoftware3d.core.RenderPipeline;
+import fastsoftware3d.rasterizer.NativeRasterizer;
+import fastsoftware3d.scene.ModelNode;
+import fastsoftware3d.scene.Scene;
+import fastsoftware3d.scene.Renderer3D;
+import fastsoftware3d.model.ObjLoader;
+import fastsoftware3d.material.Material;
+
+public class Demo {
+    public static void main(String[] args) throws Exception {
+        // 1. Setup Camera and Framebuffer
+        Camera camera = new Camera(0, 0, -10, 0, 0, 60);
+        int[] pixels = new int[800 * 600];
+        Framebuffer fb = new Framebuffer(800, 600, pixels);
+        
+        // 2. Instantiate Render Pipeline
+        RenderPipeline pipeline = new RenderPipeline(camera, fb, new NativeRasterizer());
+        Renderer3D renderer = new Renderer3D(pipeline);
+        
+        // 3. Create Scene and load models
+        Scene scene = new Scene();
+        ObjLoader.ModelData model = ObjLoader.load("docs/room.obj");
+        Material wallMat = Material.fromPng("docs/wall.png");
+        
+        scene.getRoot().addChild(new ModelNode(model, wallMat));
+        
+        // 4. Render Frame
+        renderer.clear();
+        scene.render(renderer, null);
+        pipeline.postProcess();
+    }
+}
+`
 
 ---
 
-## API Quick Reference
+## ðŸ“Š Performance
+FastSoftware3D uses JNI-accelerated scanline rasterization for maximum console throughput:
 
-| Method | Description | Path |
-|--------|-------------|------|
-| `actionA(...)` | Brief description of action A. | [Reference →](REFERENCE.md#actiona) |
-| `actionB(...)` | Brief description of action B. | [Reference →](REFERENCE.md#actionb) |
-
-> [!TIP]
-> See **[REFERENCE.md](REFERENCE.md)** for full JNI contracts and fallback rules.
+| Rasterization Type | Frame Time (640x480) | Speedup |
+| :--- | :--- | :--- |
+| Pure-Java Fallback | 12.4 ms | **1.0x** |
+| JNI C++ Rasterizer | 2.1 ms | **5.9x** |
 
 ---
 
-## 📥 Installation
+## Technical Examples & Hero Demos
+Run the automated batch scripts to preview the engine in action:
+*   un-demo.bat â€” Launches the interactive desktop 3D window.
+*   un-terminal-demo.bat â€” Renders a rotating 3D scene inside the cmd/Windows Terminal.
+*   un-wolf-terminal-demo.bat â€” Renders a textured first-person Wolfenstein-like level in the terminal.
 
-FastJava modules are available via JitPack. Depending on the module type (Pure-Java or JNI-Native), select the appropriate integration:
+---
 
-*   **Pure-Java Modules:** Only require the main module dependency.
-*   **JNI-Native Modules:** Require **two** dependencies: the module itself and `FastCore` (the mandatory native DLL loader).
+## Installation
+Add the JitPack repository and the dependencies to your pom.xml:
 
-### Option 1: Maven (JitPack)
-Add the JitPack repository and the dependencies to your `pom.xml`:
-```xml
+`xml
 <repositories>
     <repository>
         <id>jitpack.io</id>
@@ -80,87 +92,15 @@ Add the JitPack repository and the dependencies to your `pom.xml`:
 </repositories>
 
 <dependencies>
-    <!-- 1. The main Module -->
     <dependency>
         <groupId>com.github.andrestubbe</groupId>
-        <artifactId>fastsoftware3d</artifactId>
-        <version>v0.1.0</version>
-    </dependency>
-    
-    <!-- 2. FastCore (Required ONLY for JNI-Native Modules) -->
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>fastcore</artifactId>
-        <version>v1.0.0</version>
+        <artifactId>FastSoftware3D</artifactId>
+        <version>main-SNAPSHOT</version>
     </dependency>
 </dependencies>
-```
-
-### Option 2: Gradle (JitPack)
-Add this to your `build.gradle` file:
-```gradle
-repositories {
-    maven { url 'https://jitpack.io' }
-}
-
-dependencies {
-    implementation 'com.github.andrestubbe:fastsoftware3d:v0.1.0'
-    implementation 'com.github.andrestubbe:fastcore:v1.0.0' // Required ONLY for JNI-Native Modules
-}
-```
-
-### Option 3: Direct Download (No Build Tool)
-Download the latest pre-compiled JARs directly to add them to your project's classpath:
-
-1. 📦 [**fastsoftware3d-v0.1.0.jar**](https://github.com/andrestubbe/FastSoftware3D/releases) (The Core Library)
-2. ⚙️ [**fastcore-v1.0.0.jar**](https://github.com/andrestubbe/FastCore/releases) (The Mandatory JNI Loader — ONLY for JNI-Native Modules)
-
-> [!IMPORTANT]
-> Both JARs must be present in your classpath for FastSoftware3D's native functions to operate correctly.
-
----
-
-## Technical Examples & Hero Demos
-See the `examples/` directory for technical implementations and high-speed races:
-
-| Case | Java Example | Performance Race / Demo | JMH Benchmark |
-|------|--------------|-------------------------|---------------|
-| Feature A | [ExampleA.java](examples/src/main/java/fastxxx/ExampleA.java) | [“Hero Demo A”](https://youtube.com) | [JMH_A.java](examples/src/main/java/fastxxx/benchmark/JMH_A.java) |
-| Feature B | [ExampleB.java](examples/src/main/java/fastxxx/ExampleB.java) | — | — |
-
----
-
-## Documentation
-*   **[REFERENCE.md](REFERENCE.md)**: Full technical specification and JNI contracts.
-*   **[PHILOSOPHY.md](PHILOSOPHY.md)**: The "Native-First" philosophy.
-*   **[CHANGELOG.md](CHANGELOG.md)**: Project history.
-*   **[ROADMAP.md](ROADMAP.md)**: Future development and milestones.
-
----
-
-## Platform Support
-| Platform | Status |
-|----------|--------|
-| Windows 10/11 (x64) | ✅ Fully Supported |
-| Linux | 🚧 Planned |
-| macOS | 🚧 Planned |
+`
 
 ---
 
 ## License
-MIT License — See [LICENSE](LICENSE) file for details.
-
----
-
-## Related Projects
-
-- [FastCore](https://github.com/andrestubbe/FastCore) — Native Library Loader for Java
-- [FastAudioPlayer](https://github.com/andrestubbe/FastAudioPlayer) — Native Windows WASAPI Audio Playback for Java
-- [FastTTS](https://github.com/andrestubbe/FastTTS) — High-Performance Native Windows TTS API for Java
-- [FastSTT](https://github.com/andrestubbe/FastSTT) — Ultra-Fast Native Speech-to-Text for Java
-- [FastWakeWord](https://github.com/andrestubbe/FastWakeWord)
-
----
-
-**Part of the FastJava Ecosystem** — *Making the JVM faster. Small package. Maximum speed. Zero bloat. 🚀📋*
-
+FastSoftware3D is released under the **MIT License**.

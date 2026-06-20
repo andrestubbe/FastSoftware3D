@@ -84,40 +84,52 @@ public final class RenderPipeline {
         float cosRY = (float) Math.cos(rotationY);
         float sinRY = (float) Math.sin(rotationY);
 
-        for (ObjLoader.Face face : model.faces) {
-            float[][] camVerts = new float[3][];
-            float[][] projVerts = new float[3][];
-            boolean valid = true;
+        int vertexCount = model.vertices.size();
+        float[][] cachedCamVerts = new float[vertexCount][];
+        float[][] cachedProjVerts = new float[vertexCount][];
+        boolean[] vertexValid = new boolean[vertexCount];
 
-            // Stage 1: Transform (local + world-space)
-            for (int i = 0; i < 3; i++) {
-                float[] lv = model.vertices.get(face.vIndices[i]);
+        for (int i = 0; i < vertexCount; i++) {
+            float[] lv = model.vertices.get(i);
 
-                // Local rotation (yaw only, around Y axis)
-                float rx = lv[0] * cosRY - lv[2] * sinRY;
-                float rz = lv[0] * sinRY + lv[2] * cosRY;
+            // Local rotation (yaw only, around Y axis)
+            float rx = lv[0] * cosRY - lv[2] * sinRY;
+            float rz = lv[0] * sinRY + lv[2] * cosRY;
 
-                // World-space position
-                float wx = rx + modelX;
-                float wy = lv[1] + modelY;
-                float wz = rz + modelZ;
+            // World-space position
+            float wx = rx + modelX;
+            float wy = lv[1] + modelY;
+            float wz = rz + modelZ;
 
-                // Stage 2: Transform to camera-space
-                camVerts[i] = transformStage.worldToCamera(wx, wy, wz, camera);
+            // Stage 2: Transform to camera-space
+            float[] cam = transformStage.worldToCamera(wx, wy, wz, camera);
+            cachedCamVerts[i] = cam;
 
-                // Stage 3: Project to screen-space
-                projVerts[i] = projectionStage.project(camVerts[i], camera, fb.width, fb.height);
-                if (projVerts[i] == null) {
-                    valid = false;
-                    break;
-                }
+            // Stage 3: Project to screen-space
+            float[] proj = projectionStage.project(cam, camera, fb.width, fb.height);
+            if (proj != null) {
+                cachedProjVerts[i] = proj;
+                vertexValid[i] = true;
             }
-            if (!valid) continue;
+        }
+
+        for (ObjLoader.Face face : model.faces) {
+            int i0 = face.vIndices[0];
+            int i1 = face.vIndices[1];
+            int i2 = face.vIndices[2];
+
+            if (!vertexValid[i0] || !vertexValid[i1] || !vertexValid[i2]) {
+                continue;
+            }
+
+            float[] p0 = cachedProjVerts[i0];
+            float[] p1 = cachedProjVerts[i1];
+            float[] p2 = cachedProjVerts[i2];
 
             // Backface culling (screen-space cross product)
-            float x0 = projVerts[0][0], y0 = projVerts[0][1];
-            float x1 = projVerts[1][0], y1 = projVerts[1][1];
-            float x2 = projVerts[2][0], y2 = projVerts[2][1];
+            float x0 = p0[0], y0 = p0[1];
+            float x1 = p1[0], y1 = p1[1];
+            float x2 = p2[0], y2 = p2[1];
             float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
             // BACKFACE CULLING DISABLED
             // if (cross <= 0) continue;
@@ -129,7 +141,7 @@ public final class RenderPipeline {
 
             // Stage 4: Rasterize
             rasterStage.rasterizeTriangle(
-                    projVerts[0], projVerts[1], projVerts[2],
+                    p0, p1, p2,
                     new float[]{uv0[0], 1.0f - uv0[1]},
                     new float[]{uv1[0], 1.0f - uv1[1]},
                     new float[]{uv2[0], 1.0f - uv2[1]},
