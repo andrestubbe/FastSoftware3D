@@ -81,16 +81,15 @@ public class LayeredScene {
         for (Layer l : layers) {
             if (!l.visible) continue;
             
-            int[] chars = l.scene.getCodepointBuffer();
-            int[] fgs = l.scene.getFgBuffer();
-            int[] bgs = l.scene.getBgBuffer();
+            long[] cells = l.scene.getCells();
             
             for (int r = 0; r < height; r++) {
                 for (int c = 0; c < width; c++) {
                     int idx = r * width + c;
-                    char ch = (char) chars[idx];
+                    long cell = cells[idx];
+                    int ch = FastTerminalScene.unpackCodepoint(cell);
                     if (ch != '\0') {
-                        target.writeCell(c, r, ch, fgs[idx], bgs[idx]);
+                        target.writeCell(c, r, ch, FastTerminalScene.unpackFg(cell), FastTerminalScene.unpackBg(cell));
                     }
                 }
             }

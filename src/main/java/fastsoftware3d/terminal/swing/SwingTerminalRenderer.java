@@ -162,9 +162,7 @@ public class SwingTerminalRenderer {
             Graphics2D g2d = (Graphics2D) g;
             g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             
-            int[] cp = scene.getCodepointBuffer();
-            int[] fg = scene.getFgBuffer();
-            int[] bg = scene.getBgBuffer();
+            long[] cells = scene.getCells();
             
             FontMetrics fm = g2d.getFontMetrics();
             int ascent = fm.getAscent();
@@ -172,8 +170,9 @@ public class SwingTerminalRenderer {
             for (int y = 0; y < rows; y++) {
                 for (int x = 0; x < cols; x++) {
                     int i = y * cols + x;
+                    long cell = cells[i];
                     
-                    int bgC = bg[i];
+                    int bgC = FastTerminalScene.unpackBg(cell);
                     if (bgC != -1 && bgC != -2) {
                         g2d.setColor(new Color(bgC));
                         g2d.fillRect(x * fontW, y * fontH, fontW, fontH);
@@ -182,9 +181,9 @@ public class SwingTerminalRenderer {
                         g2d.fillRect(x * fontW, y * fontH, fontW, fontH);
                     }
                     
-                    int code = cp[i];
+                    int code = FastTerminalScene.unpackCodepoint(cell);
                     if (code != ' ' && code != 0 && code != -99) {
-                        int fgC = fg[i];
+                        int fgC = FastTerminalScene.unpackFg(cell);
                         if (fgC != -1 && fgC != -2) {
                             g2d.setColor(new Color(fgC));
                         } else {

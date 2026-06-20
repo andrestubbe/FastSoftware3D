@@ -7,17 +7,13 @@ import java.util.Arrays;
  * @brief Represents a high-performance grid viewport scene layer.
  * 
  * Manages primitive flat arrays for fast cell storage:
- * - `codepointBuffer`: Holds UTF-32 character codes.
- * - `fgBuffer`: Foreground true colors.
- * - `bgBuffer`: Background true colors.
+ * - `cells`: Holds packed UTF-32 character codes, foreground true colors, and background true colors.
  * 
  * Supports inline style processing via zero-allocation on-the-fly ANSI escapes.
  */
 public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
 
-    private int[] codepointBuffer;
-    private int[] fgBuffer;
-    private int[] bgBuffer;
+    private long[] cells;
 
     private int x;
     private int y;
@@ -26,6 +22,39 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
     private Runnable updater;
     private boolean dirty;
     private boolean transparentBackground = false;
+
+    /**
+     * @brief Packs codepoint, foreground color, and background color into a single 64-bit long.
+     */
+    public static long packCell(int codepoint, int fg, int bg) {
+        long cpPart = (codepoint & 0xFFFFL);
+        long fgPart = ((long)(fg & 0xFFFFFF) << 16);
+        long bgPart = ((long)(bg & 0xFFFFFF) << 40);
+        return cpPart | fgPart | bgPart;
+    }
+
+    /**
+     * @brief Unpacks UTF-32/BMP character code from the 64-bit cell.
+     */
+    public static int unpackCodepoint(long cell) {
+        return (int)(cell & 0xFFFF);
+    }
+
+    /**
+     * @brief Unpacks 24-bit True Color foreground value.
+     */
+    public static int unpackFg(long cell) {
+        int color = (int)((cell >> 16) & 0xFFFFFF);
+        return color == 0xFFFFFF ? -1 : color;
+    }
+
+    /**
+     * @brief Unpacks 24-bit True Color background value.
+     */
+    public static int unpackBg(long cell) {
+        int color = (int)((cell >> 40) & 0xFFFFFF);
+        return color == 0xFFFFFF ? -1 : color;
+    }
 
     /**
      * @brief Allocates all cell buffer layers.
@@ -40,9 +69,7 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
         this.y = y;
         this.width = width;
         this.height = height;
-        this.codepointBuffer = new int[width * height];
-        this.fgBuffer = new int[width * height];
-        this.bgBuffer = new int[width * height];
+        this.cells = new long[width * height];
         this.dirty = true;
         this.clear();
     }
@@ -61,9 +88,8 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
      * @brief Resets all cells back to blank defaults: Space character, -1 foreground, -1 background.
      */
     public void clear() {
-        Arrays.fill(this.codepointBuffer, ' ');
-        Arrays.fill(this.fgBuffer, -1);
-        Arrays.fill(this.bgBuffer, -1);
+        long emptyCell = packCell(' ', -1, -1);
+        Arrays.fill(this.cells, emptyCell);
     }
 
     /**
@@ -79,9 +105,7 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
 
         this.width = newWidth;
         this.height = newHeight;
-        this.codepointBuffer = new int[newWidth * newHeight];
-        this.fgBuffer = new int[newWidth * newHeight];
-        this.bgBuffer = new int[newWidth * newHeight];
+        this.cells = new long[newWidth * newHeight];
         this.clear();
         this.dirty = true;
         return true;
@@ -111,9 +135,14 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
     public void writeCell(int col, int row, int codepoint, int fg, int bg) {
         if (col >= 0 && col < this.width && row >= 0 && row < this.height) {
             int idx = row * this.width + col;
-            this.codepointBuffer[idx] = codepoint;
-            if (fg != -2) this.fgBuffer[idx] = fg;
-            if (bg != -2) this.bgBuffer[idx] = bg;
+            long cell = this.cells[idx];
+            int currentFg = unpackFg(cell);
+            int currentBg = unpackBg(cell);
+
+            int finalFg = (fg == -2) ? currentFg : fg;
+            int finalBg = (bg == -2) ? currentBg : bg;
+
+            this.cells[idx] = packCell(codepoint, finalFg, finalBg);
         }
     }
 
@@ -133,14 +162,14 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
         for (int i = 0; i < len; ) {
             if (col >= this.width) break;
             int cp = text.codePointAt(i);
-            int width = fastemojis.FastEmojis.getWidth(cp);
+            int charWidth = fastemojis.FastEmojis.getWidth(cp);
             
             this.writeCell(col, row, cp, fg, bg);
-            if (width == 2 && col + 1 < this.width) {
+            if (charWidth == 2 && col + 1 < this.width) {
                 this.writeCell(col + 1, row, -99, fg, bg); // Native continuation cell marker
             }
             
-            col += width;
+            col += charWidth;
             i += Character.charCount(cp);
         }
     }
@@ -324,27 +353,11 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
     }
 
     /**
-     * @brief Gets the low-level character buffer array.
-     * @return Codepoints array.
+     * @brief Gets the low-level packed cells buffer array.
+     * @return Cells array.
      */
-    public int[] getCodepointBuffer() {
-        return this.codepointBuffer;
-    }
-
-    /**
-     * @brief Gets the low-level foreground array.
-     * @return Foreground colors array.
-     */
-    public int[] getFgBuffer() {
-        return this.fgBuffer;
-    }
-
-    /**
-     * @brief Gets the low-level background array.
-     * @return Background colors array.
-     */
-    public int[] getBgBuffer() {
-        return this.bgBuffer;
+    public long[] getCells() {
+        return this.cells;
     }
 
     /**
@@ -383,9 +396,7 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
      * @brief Disposes and dereferences buffers inside the scene layer.
      */
     public void dispose() {
-        this.codepointBuffer = null;
-        this.fgBuffer = null;
-        this.bgBuffer = null;
+        this.cells = null;
         this.updater = null;
     }
 
@@ -432,24 +443,23 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
     public void writeCellAlpha(int col, int row, int codepoint, int fg, int bg, double fgAlpha, double bgAlpha) {
         if (col >= 0 && col < this.width && row >= 0 && row < this.height) {
             int idx = row * this.width + col;
+            long cell = this.cells[idx];
+            int oldFg = unpackFg(cell);
+            int oldBg = unpackBg(cell);
             
             // Blend foreground if needed
             if (fgAlpha < 1.0) {
-                int oldFg = this.fgBuffer[idx];
                 if (oldFg == -1) oldFg = 0x000000;
                 fg = blendColor(oldFg, fg, fgAlpha);
             }
             
             // Blend background if needed
             if (bgAlpha < 1.0) {
-                int oldBg = this.bgBuffer[idx];
                 if (oldBg == -1) oldBg = 0x000000;
                 bg = blendColor(oldBg, bg, bgAlpha);
             }
             
-            this.codepointBuffer[idx] = codepoint;
-            this.fgBuffer[idx] = fg;
-            this.bgBuffer[idx] = bg;
+            this.cells[idx] = packCell(codepoint, fg, bg);
         }
     }
 
@@ -468,6 +478,9 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
     public void writeCellARGB(int col, int row, int codepoint, int fgPacked, int bgPacked) {
         if (col >= 0 && col < this.width && row >= 0 && row < this.height) {
             int idx = row * this.width + col;
+            long cell = this.cells[idx];
+            int oldFg = unpackFg(cell);
+            int oldBg = unpackBg(cell);
             
             // Extract alpha from fg
             int fgAlphaByte = (fgPacked >>> 24) & 0xFF;
@@ -477,11 +490,10 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
             }
             if (fgAlphaByte > 0) {
                 if (fgAlphaByte < 255) {
-                    int oldFg = this.fgBuffer[idx];
                     if (oldFg == -1) oldFg = 0x000000;
                     fgColor = blendColor(oldFg, fgColor, fgAlphaByte / 255.0);
                 }
-                this.fgBuffer[idx] = fgColor;
+                oldFg = fgColor;
             }
             
             // Extract alpha from bg
@@ -492,16 +504,14 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
             }
             if (bgAlphaByte > 0) {
                 if (bgAlphaByte < 255) {
-                    int oldBg = this.bgBuffer[idx];
                     if (oldBg == -1) oldBg = 0x000000;
                     bgColor = blendColor(oldBg, bgColor, bgAlphaByte / 255.0);
                 }
-                this.bgBuffer[idx] = bgColor;
+                oldBg = bgColor;
             }
             
-            if (codepoint != ' ' || fgAlphaByte > 0) {
-                this.codepointBuffer[idx] = codepoint;
-            }
+            int finalCp = (codepoint != ' ' || fgAlphaByte > 0) ? codepoint : unpackCodepoint(cell);
+            this.cells[idx] = packCell(finalCp, oldFg, oldBg);
         }
     }
 
@@ -523,14 +533,14 @@ public class FastTerminalScene implements fastsoftware3d.ansi.CellConsumer {
         for (int i = 0; i < len; ) {
             if (col >= this.width) break;
             int cp = text.codePointAt(i);
-            int width = fastemojis.FastEmojis.getWidth(cp);
+            int charWidth = fastemojis.FastEmojis.getWidth(cp);
             
             this.writeCellAlpha(col, row, cp, fg, bg, fgAlpha, bgAlpha);
-            if (width == 2 && col + 1 < this.width) {
+            if (charWidth == 2 && col + 1 < this.width) {
                 this.writeCellAlpha(col + 1, row, -99, fg, bg, fgAlpha, bgAlpha);
             }
             
-            col += width;
+            col += charWidth;
             i += Character.charCount(cp);
         }
     }

@@ -331,9 +331,7 @@ public final class FastTerminalRenderer {
     // ════════════════════════════════════════════════════════════════════════
 
     private void insertScene(final FastTerminalScene scene) {
-        final int[] srcCp  = scene.getCodepointBuffer();
-        final int[] srcFg  = scene.getFgBuffer();
-        final int[] srcBg  = scene.getBgBuffer();
+        final long[] srcCells = scene.getCells();
         final int srcWidth  = scene.getWidth();
         final int srcHeight = scene.getHeight();
         final int dstX      = scene.getX();
@@ -359,18 +357,22 @@ public final class FastTerminalRenderer {
             if (length <= 0) continue;
 
             if (!transparent) {
-                System.arraycopy(srcCp, srcPos, compositeCodepoints, dstPos, length);
-                System.arraycopy(srcFg, srcPos, compositeFg,         dstPos, length);
-                System.arraycopy(srcBg, srcPos, compositeBg,         dstPos, length);
+                for (int i = 0; i < length; i++) {
+                    long cell = srcCells[srcPos + i];
+                    compositeCodepoints[dstPos + i] = FastTerminalScene.unpackCodepoint(cell);
+                    compositeFg[dstPos + i]         = FastTerminalScene.unpackFg(cell);
+                    compositeBg[dstPos + i]         = FastTerminalScene.unpackBg(cell);
+                }
             } else {
                 for (int i = 0; i < length; i++) {
-                    int scp = srcCp[srcPos + i];
-                    int sfg = srcFg[srcPos + i];
-                    int sbg = srcBg[srcPos + i];
+                    long cell = srcCells[srcPos + i];
+                    int scp = FastTerminalScene.unpackCodepoint(cell);
+                    int sfg = FastTerminalScene.unpackFg(cell);
+                    int sbg = FastTerminalScene.unpackBg(cell);
                     if (scp == ' ' && sfg == -1 && sbg == -1) continue;
                     compositeCodepoints[dstPos + i] = scp;
-                    compositeFg        [dstPos + i] = sfg;
-                    compositeBg        [dstPos + i] = sbg;
+                    compositeFg[dstPos + i]         = sfg;
+                    compositeBg[dstPos + i]         = sbg;
                 }
             }
         }
