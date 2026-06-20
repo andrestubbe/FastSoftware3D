@@ -58,7 +58,6 @@
                 <configuration>
                     <mainClass>fastsoftware3d.Benchmark</mainClass>
                     <commandlineArgs>--enable-native-access=ALL-UNNAMED</commandlineArgs>
-                    <classpathScope>system</classpathScope>
                 </configuration>
             </plugin>
         </plugins>

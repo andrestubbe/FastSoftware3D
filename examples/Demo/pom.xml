@@ -76,7 +76,6 @@
                     <mainClass>fastsoftware3d.Demo</mainClass>
                     <!-- Required for some native operations -->
                     <commandlineArgs>--enable-native-access=ALL-UNNAMED</commandlineArgs>
-                    <classpathScope>system</classpathScope>
                 </configuration>
             </plugin>
         </plugins>
