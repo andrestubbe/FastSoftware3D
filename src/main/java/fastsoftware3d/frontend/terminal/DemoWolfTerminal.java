@@ -180,8 +180,8 @@ public class DemoWolfTerminal {
             }
 
             synchronized (DemoWolfTerminal.class) {
-                // Clear to darker yellow-brownish fog color
-                Arrays.fill(renderPixels, 0x948D6B);
+                // Clear to black background
+                Arrays.fill(renderPixels, 0x000000);
                 activeRenderer.clear();
 
                 Graphics2D g = renderBuffer.createGraphics();

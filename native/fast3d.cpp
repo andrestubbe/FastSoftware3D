@@ -83,10 +83,10 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
                             // Linear depth fog calculation (matching JavaRasterizer)
                             float fogNear = 750.0f;
                             float fogFar = 2100.0f;
-                            int fogColor = 0x948D6B;
+                            int fogColor = 0x000000;
 
                             float fogFactor = (fogFar - depth) / (fogFar - fogNear);
-                            if (fogFactor < 0.15f) fogFactor = 0.15f; // Max 85% fog at far distance
+                            if (fogFactor < 0.50f) fogFactor = 0.50f; // Max 50% fog at far distance
                             if (fogFactor > 1.0f) fogFactor = 1.0f;
 
                             if (fogFactor >= 1.0f) {

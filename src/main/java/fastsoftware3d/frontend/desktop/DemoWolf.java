@@ -216,7 +216,7 @@ public class DemoWolf extends Canvas {
                 Graphics2D g2d = buffers.screenBuffer.createGraphics();
 
                 synchronized (this) {
-                    java.util.Arrays.fill(buffers.renderPixels, 0x948D6B);
+                    java.util.Arrays.fill(buffers.renderPixels, 0x000000);
                     activeRenderer.clear();
 
                     scene.update(deltaTime);
