@@ -287,7 +287,7 @@ public class DemoWolf extends Canvas {
     }
 
     public static void main(String[] args) {
-        JFrame frame = new JFrame("Fast3D - Wolfenstein Desktop Demo");
+        JFrame frame = new JFrame("FastSoftware3D - Wolfenstein Desktop Demo");
         DemoWolf canvas = new DemoWolf(frame);
         frame.add(canvas);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);

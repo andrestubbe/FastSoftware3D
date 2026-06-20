@@ -263,7 +263,7 @@ public class Demo3D extends Canvas {
     }
 
     public static void main(String[] args) {
-        JFrame frame = new JFrame("Fast3D - Desktop Demo");
+        JFrame frame = new JFrame("FastSoftware3D - Desktop Demo");
         Demo3D canvas = new Demo3D(frame);
         frame.add(canvas);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);

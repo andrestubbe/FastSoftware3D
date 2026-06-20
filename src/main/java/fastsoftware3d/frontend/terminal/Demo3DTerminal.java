@@ -33,7 +33,7 @@ public class Demo3DTerminal {
         try {
             fastcore.FastCore.loadLibrary("fastsoftware3d");
         } catch (Throwable t) {
-            System.err.println("Failed to load native fast3d library in Demo3DTerminal: " + t.getMessage());
+            System.err.println("Failed to load native fastsoftware3d library in Demo3DTerminal: " + t.getMessage());
         }
     }
 
@@ -64,7 +64,7 @@ public class Demo3DTerminal {
             t.printStackTrace();
         }
 
-        System.out.println("Starting Fast3D Terminal Demo...");
+        System.out.println("Starting fastsoftware3d Terminal Demo...");
 
         // Initialize FastKeyboard JNI listener
         final FastKeyboard keyboard = new FastKeyboardImpl();
