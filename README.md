@@ -9,7 +9,7 @@
 
 ---
 
-[![FastSoftware3D Showcase](docs/screenshot.png)](docs/screenshot.png)
+[![FastSoftware3D Showcase](docs/screensho.png)](docs/screensho.png)
 
 ---
 
@@ -103,4 +103,4 @@ Add the JitPack repository and the dependencies to your pom.xml:
 ---
 
 ## License
-FastSoftware3D is released under the **MIT License**.
+FastSoftware3D is released under the **MIT License**.

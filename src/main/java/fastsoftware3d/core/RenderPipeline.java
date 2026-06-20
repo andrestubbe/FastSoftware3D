@@ -75,10 +75,24 @@ public final class RenderPipeline {
         float cx = camCenter[0], cy = camCenter[1], cz = camCenter[2];
         float R = model.boundingRadius;
 
-        // System.out.println("renderModel: pos=(" + modelX + "," + modelY + "," + modelZ + ") camPos=(" + cx + "," + cy + "," + cz + ") R=" + R + " faces=" + model.faces.size());
+        // Near plane culling
+        if (cz + R <= 0.1f) return;
 
-        // CULLING DISABLED — comment back in when geometry is stable
-        // if (cz + R <= 1.0f) return;
+        // Calculate horizontal and vertical camera frustum planes
+        float theta = (float) Math.toRadians(camera.fov / 2.0f);
+        float cosTheta = (float) Math.cos(theta);
+        float sinTheta = (float) Math.sin(theta);
+        float tanTheta = (float) Math.tan(theta);
+        float aspect = (float) fb.height / fb.width;
+        float phi = (float) Math.atan(tanTheta * aspect);
+        float cosPhi = (float) Math.cos(phi);
+        float sinPhi = (float) Math.sin(phi);
+
+        // Right/Left plane culling
+        if (Math.abs(cx) * cosTheta - cz * sinTheta > R) return;
+
+        // Top/Bottom plane culling
+        if (Math.abs(cy) * cosPhi - cz * sinPhi > R) return;
 
 
         float cosRY = (float) Math.cos(rotationY);
@@ -131,8 +145,7 @@ public final class RenderPipeline {
             float x1 = p1[0], y1 = p1[1];
             float x2 = p2[0], y2 = p2[1];
             float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-            // BACKFACE CULLING DISABLED
-            // if (cross <= 0) continue;
+            if (cross <= 0) continue;
 
             // Fetch UVs
             float[] uv0 = face.uvIndices[0] >= 0 ? model.uvs.get(face.uvIndices[0]) : new float[]{0, 0};
