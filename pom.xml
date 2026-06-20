@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.github.andrestubbe</groupId>
-    <artifactId>_BluePrint</artifactId>
+    <artifactId>FastSoftware3D</artifactId>
     <version>main-SNAPSHOT</version>
     <packaging>jar</packaging>
 

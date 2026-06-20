@@ -1,15 +1,15 @@
-package fastXXX;
+package fastsoftware3d;
 
-import fastXXX.FastXXX;
+import fastsoftware3d.fastsoftware3d;
 
 /**
- * Basic Hello World Demo for FastXXX.
+ * Basic Hello World Demo for fastsoftware3d.
  */
 public class Demo {
     public static void main(String[] args) {
-        System.out.println("=== FastXXX Demo ===");
+        System.out.println("=== fastsoftware3d Demo ===");
         
-        FastXXX api = new FastXXX();
+        fastsoftware3d api = new fastsoftware3d();
         
         System.out.println("Calling native method...");
         api.doSomethingNative();

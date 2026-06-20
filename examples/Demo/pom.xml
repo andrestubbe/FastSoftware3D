@@ -36,10 +36,10 @@
         <!-- ======================================================== -->
         <dependency>
             <groupId>com.github.andrestubbe</groupId>
-            <artifactId>fastsoftware3d</artifactId>
-            <version>0.1.0</version>
+            <artifactId>FastSoftware3D</artifactId>
+            <version>main-SNAPSHOT</version>
             <scope>system</scope>
-            <systemPath>${project.basedir}/../../target/fastsoftware3d-1.0.0.jar</systemPath>
+            <systemPath>${project.basedir}/../../target/FastSoftware3D-main-SNAPSHOT.jar</systemPath>
         </dependency>
         
         <!-- ======================================================== -->
