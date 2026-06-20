@@ -35,7 +35,7 @@
             <artifactId>FastSoftware3D</artifactId>
             <version>main-SNAPSHOT</version>
             <scope>system</scope>
-            <systemPath>${project.basedir}/../../target/FastSoftware3D-main-SNAPSHOT.jar</systemPath>
+            <systemPath>${project.basedir}/../../target/fastsoftware3d.jar</systemPath>
         </dependency>
     </dependencies>
     
@@ -58,6 +58,7 @@
                 <configuration>
                     <mainClass>fastsoftware3d.Benchmark</mainClass>
                     <commandlineArgs>--enable-native-access=ALL-UNNAMED</commandlineArgs>
+                    <classpathScope>system</classpathScope>
                 </configuration>
             </plugin>
         </plugins>

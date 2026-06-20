@@ -101,6 +101,7 @@
     </dependencies>
 
     <build>
+        <finalName>fastsoftware3d</finalName>
         <resources>
             <!-- Include native DLL in JAR (loaded from build folder) -->
             <resource>
@@ -196,9 +197,9 @@
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
                     </descriptorRefs>
-                    <!-- Produce clean final name: fastsoftware3d-1.0.0.jar without -jar-with-dependencies suffix -->
+                    <!-- Produce clean final name: fastsoftware3d.jar without -jar-with-dependencies suffix -->
                     <appendAssemblyId>false</appendAssemblyId>
-                    <finalName>${project.artifactId}-${project.version}</finalName>
+                    <finalName>fastsoftware3d</finalName>
                     <archive>
                         <manifest>
                             <!-- Note: mainClass is usually meant for Demo execution, can be skipped for pure lib -->
