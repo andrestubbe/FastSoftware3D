@@ -73,7 +73,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
-                    <mainClass>fastsoftware3d.Demo</mainClass>
+                    <mainClass>fastsoftware3d.demo.Demo3D</mainClass>
                     <!-- Required for some native operations -->
                     <commandlineArgs>--enable-native-access=ALL-UNNAMED</commandlineArgs>
                 </configuration>

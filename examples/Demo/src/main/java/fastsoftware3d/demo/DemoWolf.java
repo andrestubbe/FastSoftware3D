@@ -1,4 +1,4 @@
-package fastsoftware3d.frontend.desktop;
+package fastsoftware3d.demo;
 
 import fasttheme.FastTheme;
 import fastsoftware3d.camera.Camera;

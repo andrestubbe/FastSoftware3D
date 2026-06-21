@@ -1,4 +1,4 @@
-package fastsoftware3d.frontend.desktop;
+package fastsoftware3d.demo;
 
 import fasttheme.FastTheme;
 import fastsoftware3d.camera.Camera;
@@ -54,7 +54,7 @@ public class Demo3D extends Canvas {
 
     private float cubeRotationY = 0.0f;
 
-    private final Camera camera = new Camera(165f, 140f, -250.0f, -0.68f, -0.54f, 65.0f);
+    private final Camera camera = new Camera(0.0f, 0.0f, -250.0f, 0.0f, 0.0f, 65.0f);
     private final CameraController controller = new CameraController(camera);
 
     public Demo3D(JFrame parentFrame) {
