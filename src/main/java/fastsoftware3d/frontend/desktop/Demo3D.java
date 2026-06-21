@@ -14,7 +14,7 @@ import fastsoftware3d.scene.Renderer3D;
 import fastsoftware3d.scene.ModelNode;
 import fastsoftware3d.scene.GridNode;
 import fastsoftware3d.buffers.RenderBuffers;
-import fastsoftware3d.frontend.terminal.TerminalDownsampler;
+import fastsoftware3d.util.TerminalDownsampler;
 
 import javax.swing.JFrame;
 import java.awt.Canvas;
@@ -207,7 +207,7 @@ public class Demo3D extends Canvas {
                     int renderH = baseH * ssaaFactor;
 
                     if (ssaaFactor > 1 && buffers.downsamplePixels != null) {
-                        TerminalDownsampler.downsample(buffers.renderPixels, renderW, renderH,
+                        fastsoftware3d.util.TerminalDownsampler.downsample(buffers.renderPixels, renderW, renderH,
                                 buffers.downsamplePixels, baseW, baseH, ssaaFactor);
                         // Blit downsampled to screen
                         for (int y = 0; y < baseH && y < HEIGHT; y++) {
@@ -269,6 +269,18 @@ public class Demo3D extends Canvas {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.pack();
         frame.setLocationRelativeTo(null);
+
+        frame.addNotify();
+        try {
+            long hwnd = fasttheme.FastTheme.getWindowHandle(frame);
+            fasttheme.FastTheme.setTitleBarDarkMode(hwnd, true);
+            fasttheme.FastTheme.setTitleBarColor(hwnd, 0, 0, 0);
+            fasttheme.FastTheme.setTitleBarTextColor(hwnd, 255, 255, 255);
+            fasttheme.FastTheme.setWindowTransparency(hwnd, 224);
+        } catch (Exception e) {
+            System.err.println("FastTheme dark mode failed: " + e.getMessage());
+        }
+
         frame.setVisible(true);
         canvas.start();
     }

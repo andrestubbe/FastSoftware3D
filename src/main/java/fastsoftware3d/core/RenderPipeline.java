@@ -25,6 +25,33 @@ public final class RenderPipeline {
     private final RasterStage rasterStage = new RasterStage();
 
     private float[] batchBuffer = new float[1024 * 15]; // start with capacity for 1024 triangles
+    private final float[] clipIn = new float[3 * 5];
+    private final float[] clipOut = new float[4 * 5];
+    private float[] vertexCache = new float[1024 * 3];
+    private final float[] projTemp = new float[12];
+
+    private static final float[] UV_FALLBACK_0 = {0.0f, 0.0f};
+    private static final float[] UV_FALLBACK_1 = {1.0f, 0.0f};
+    private static final float[] UV_FALLBACK_2 = {0.0f, 1.0f};
+
+    private void ensureVertexCacheCapacity(int vertexCount) {
+        int reqLen = vertexCount * 3;
+        if (reqLen > vertexCache.length) {
+            int newLen = Math.max(reqLen, vertexCache.length * 2);
+            vertexCache = new float[newLen];
+        }
+    }
+
+    private void interpolate(float[] out, int outIdx, float[] v1, int v1Idx, float[] v2, int v2Idx, float near) {
+        float z1 = v1[v1Idx + 2];
+        float z2 = v2[v2Idx + 2];
+        float t = (near - z1) / (z2 - z1);
+        out[outIdx]     = v1[v1Idx] + t * (v2[v2Idx] - v1[v1Idx]);
+        out[outIdx + 1] = v1[v1Idx + 1] + t * (v2[v2Idx + 1] - v1[v1Idx + 1]);
+        out[outIdx + 2] = near;
+        out[outIdx + 3] = v1[v1Idx + 3] + t * (v2[v2Idx + 3] - v1[v1Idx + 3]);
+        out[outIdx + 4] = v1[v1Idx + 4] + t * (v2[v2Idx + 4] - v1[v1Idx + 4]);
+    }
 
     private void ensureBatchCapacity(int triCount) {
         int reqLen = triCount * 15;
@@ -109,9 +136,7 @@ public final class RenderPipeline {
         float sinRY = (float) Math.sin(rotationY);
 
         int vertexCount = model.vertices.size();
-        float[][] cachedCamVerts = new float[vertexCount][];
-        float[][] cachedProjVerts = new float[vertexCount][];
-        boolean[] vertexValid = new boolean[vertexCount];
+        ensureVertexCacheCapacity(vertexCount);
 
         for (int i = 0; i < vertexCount; i++) {
             float[] lv = model.vertices.get(i);
@@ -125,65 +150,171 @@ public final class RenderPipeline {
             float wy = lv[1] + modelY;
             float wz = rz + modelZ;
 
-            // Stage 2: Transform to camera-space
-            float[] cam = transformStage.worldToCamera(wx, wy, wz, camera);
-            cachedCamVerts[i] = cam;
-
-            // Stage 3: Project to screen-space
-            float[] proj = projectionStage.project(cam, camera, fb.width, fb.height);
-            if (proj != null) {
-                cachedProjVerts[i] = proj;
-                vertexValid[i] = true;
-            }
+            // Stage 2: Transform to camera-space with zero allocations
+            transformStage.worldToCameraZeroAlloc(wx, wy, wz, camera, vertexCache, i * 3);
         }
 
         int visibleCount = 0;
+        float nearPlane = 2.0f; // Matches Camera.project limit of 2.0f
+
         for (ObjLoader.Face face : model.faces) {
             int i0 = face.vIndices[0];
             int i1 = face.vIndices[1];
             int i2 = face.vIndices[2];
 
-            if (!vertexValid[i0] || !vertexValid[i1] || !vertexValid[i2]) {
-                continue;
+            int vOff0 = i0 * 3;
+            int vOff1 = i1 * 3;
+            int vOff2 = i2 * 3;
+
+            float c0z = vertexCache[vOff0 + 2];
+            float c1z = vertexCache[vOff1 + 2];
+            float c2z = vertexCache[vOff2 + 2];
+
+            float[] uv0 = face.uvIndices[0] >= 0 ? model.uvs.get(face.uvIndices[0]) : UV_FALLBACK_0;
+            float[] uv1 = face.uvIndices[1] >= 0 ? model.uvs.get(face.uvIndices[1]) : UV_FALLBACK_1;
+            float[] uv2 = face.uvIndices[2] >= 0 ? model.uvs.get(face.uvIndices[2]) : UV_FALLBACK_2;
+
+            clipIn[0] = vertexCache[vOff0]; clipIn[1] = vertexCache[vOff0 + 1]; clipIn[2] = c0z; clipIn[3] = uv0[0]; clipIn[4] = uv0[1];
+            clipIn[5] = vertexCache[vOff1]; clipIn[6] = vertexCache[vOff1 + 1]; clipIn[7] = c1z; clipIn[8] = uv1[0]; clipIn[9] = uv1[1];
+            clipIn[10] = vertexCache[vOff2]; clipIn[11] = vertexCache[vOff2 + 1]; clipIn[12] = c2z; clipIn[13] = uv2[0]; clipIn[14] = uv2[1];
+
+            boolean in0 = c0z >= nearPlane;
+            boolean in1 = c1z >= nearPlane;
+            boolean in2 = c2z >= nearPlane;
+
+            int count = (in0 ? 1 : 0) + (in1 ? 1 : 0) + (in2 ? 1 : 0);
+            if (count == 0) continue;
+
+            int numOutVerts = 0;
+            if (count == 3) {
+                System.arraycopy(clipIn, 0, clipOut, 0, 15);
+                numOutVerts = 3;
+            } else if (count == 1) {
+                if (in0) {
+                    System.arraycopy(clipIn, 0, clipOut, 0, 5);
+                    interpolate(clipOut, 5, clipIn, 0, clipIn, 5, nearPlane);
+                    interpolate(clipOut, 10, clipIn, 0, clipIn, 10, nearPlane);
+                } else if (in1) {
+                    System.arraycopy(clipIn, 5, clipOut, 0, 5);
+                    interpolate(clipOut, 5, clipIn, 5, clipIn, 10, nearPlane);
+                    interpolate(clipOut, 10, clipIn, 5, clipIn, 0, nearPlane);
+                } else {
+                    System.arraycopy(clipIn, 10, clipOut, 0, 5);
+                    interpolate(clipOut, 5, clipIn, 10, clipIn, 0, nearPlane);
+                    interpolate(clipOut, 10, clipIn, 10, clipIn, 5, nearPlane);
+                }
+                numOutVerts = 3;
+            } else if (count == 2) {
+                if (!in0) {
+                    System.arraycopy(clipIn, 5, clipOut, 0, 5);
+                    System.arraycopy(clipIn, 10, clipOut, 5, 5);
+                    interpolate(clipOut, 10, clipIn, 10, clipIn, 0, nearPlane);
+                    interpolate(clipOut, 15, clipIn, 5, clipIn, 0, nearPlane);
+                } else if (!in1) {
+                    System.arraycopy(clipIn, 10, clipOut, 0, 5);
+                    System.arraycopy(clipIn, 0, clipOut, 5, 5);
+                    interpolate(clipOut, 10, clipIn, 0, clipIn, 5, nearPlane);
+                    interpolate(clipOut, 15, clipIn, 10, clipIn, 5, nearPlane);
+                } else {
+                    System.arraycopy(clipIn, 0, clipOut, 0, 5);
+                    System.arraycopy(clipIn, 5, clipOut, 5, 5);
+                    interpolate(clipOut, 10, clipIn, 5, clipIn, 10, nearPlane);
+                    interpolate(clipOut, 15, clipIn, 0, clipIn, 10, nearPlane);
+                }
+                numOutVerts = 4;
             }
 
-            float[] p0 = cachedProjVerts[i0];
-            float[] p1 = cachedProjVerts[i1];
-            float[] p2 = cachedProjVerts[i2];
+            if (numOutVerts == 3) {
+                boolean p0Valid = projectionStage.projectZeroAlloc(clipOut[0], clipOut[1], clipOut[2], camera, fb.width, fb.height, projTemp, 0);
+                boolean p1Valid = projectionStage.projectZeroAlloc(clipOut[5], clipOut[6], clipOut[7], camera, fb.width, fb.height, projTemp, 3);
+                boolean p2Valid = projectionStage.projectZeroAlloc(clipOut[10], clipOut[11], clipOut[12], camera, fb.width, fb.height, projTemp, 6);
 
-            // Backface culling (screen-space cross product)
-            float x0 = p0[0], y0 = p0[1];
-            float x1 = p1[0], y1 = p1[1];
-            float x2 = p2[0], y2 = p2[1];
-            float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-            if (cross <= 0) continue;
+                if (p0Valid && p1Valid && p2Valid) {
+                    float cross = (projTemp[3] - projTemp[0]) * (projTemp[7] - projTemp[1]) - (projTemp[4] - projTemp[1]) * (projTemp[6] - projTemp[0]);
+                    if (cross > 0) {
+                        ensureBatchCapacity(visibleCount + 1);
+                        int offset = visibleCount * 15;
+                        batchBuffer[offset]      = projTemp[0];
+                        batchBuffer[offset + 1]  = projTemp[1];
+                        batchBuffer[offset + 2]  = projTemp[2];
+                        batchBuffer[offset + 3]  = clipOut[3];
+                        batchBuffer[offset + 4]  = 1.0f - clipOut[4];
 
-            // Fetch UVs
-            float[] uv0 = face.uvIndices[0] >= 0 ? model.uvs.get(face.uvIndices[0]) : new float[]{0, 0};
-            float[] uv1 = face.uvIndices[1] >= 0 ? model.uvs.get(face.uvIndices[1]) : new float[]{1, 0};
-            float[] uv2 = face.uvIndices[2] >= 0 ? model.uvs.get(face.uvIndices[2]) : new float[]{0, 1};
+                        batchBuffer[offset + 5]  = projTemp[3];
+                        batchBuffer[offset + 6]  = projTemp[4];
+                        batchBuffer[offset + 7]  = projTemp[5];
+                        batchBuffer[offset + 8]  = clipOut[8];
+                        batchBuffer[offset + 9]  = 1.0f - clipOut[9];
 
-            ensureBatchCapacity(visibleCount + 1);
-            int offset = visibleCount * 15;
-            batchBuffer[offset]      = p0[0];
-            batchBuffer[offset + 1]  = p0[1];
-            batchBuffer[offset + 2]  = p0[2];
-            batchBuffer[offset + 3]  = uv0[0];
-            batchBuffer[offset + 4]  = 1.0f - uv0[1];
+                        batchBuffer[offset + 10] = projTemp[6];
+                        batchBuffer[offset + 11] = projTemp[7];
+                        batchBuffer[offset + 12] = projTemp[8];
+                        batchBuffer[offset + 13] = clipOut[13];
+                        batchBuffer[offset + 14] = 1.0f - clipOut[14];
 
-            batchBuffer[offset + 5]  = p1[0];
-            batchBuffer[offset + 6]  = p1[1];
-            batchBuffer[offset + 7]  = p1[2];
-            batchBuffer[offset + 8]  = uv1[0];
-            batchBuffer[offset + 9]  = 1.0f - uv1[1];
+                        visibleCount++;
+                    }
+                }
+            } else if (numOutVerts == 4) {
+                boolean p0Valid = projectionStage.projectZeroAlloc(clipOut[0], clipOut[1], clipOut[2], camera, fb.width, fb.height, projTemp, 0);
+                boolean p1Valid = projectionStage.projectZeroAlloc(clipOut[5], clipOut[6], clipOut[7], camera, fb.width, fb.height, projTemp, 3);
+                boolean p2Valid = projectionStage.projectZeroAlloc(clipOut[10], clipOut[11], clipOut[12], camera, fb.width, fb.height, projTemp, 6);
+                boolean p3Valid = projectionStage.projectZeroAlloc(clipOut[15], clipOut[16], clipOut[17], camera, fb.width, fb.height, projTemp, 9);
 
-            batchBuffer[offset + 10] = p2[0];
-            batchBuffer[offset + 11] = p2[1];
-            batchBuffer[offset + 12] = p2[2];
-            batchBuffer[offset + 13] = uv2[0];
-            batchBuffer[offset + 14] = 1.0f - uv2[1];
+                if (p0Valid && p1Valid && p2Valid && p3Valid) {
+                    // Triangle 1: p0, p1, p2
+                    float cross1 = (projTemp[3] - projTemp[0]) * (projTemp[7] - projTemp[1]) - (projTemp[4] - projTemp[1]) * (projTemp[6] - projTemp[0]);
+                    if (cross1 > 0) {
+                        ensureBatchCapacity(visibleCount + 1);
+                        int offset = visibleCount * 15;
+                        batchBuffer[offset]      = projTemp[0];
+                        batchBuffer[offset + 1]  = projTemp[1];
+                        batchBuffer[offset + 2]  = projTemp[2];
+                        batchBuffer[offset + 3]  = clipOut[3];
+                        batchBuffer[offset + 4]  = 1.0f - clipOut[4];
 
-            visibleCount++;
+                        batchBuffer[offset + 5]  = projTemp[3];
+                        batchBuffer[offset + 6]  = projTemp[4];
+                        batchBuffer[offset + 7]  = projTemp[5];
+                        batchBuffer[offset + 8]  = clipOut[8];
+                        batchBuffer[offset + 9]  = 1.0f - clipOut[9];
+
+                        batchBuffer[offset + 10] = projTemp[6];
+                        batchBuffer[offset + 11] = projTemp[7];
+                        batchBuffer[offset + 12] = projTemp[8];
+                        batchBuffer[offset + 13] = clipOut[13];
+                        batchBuffer[offset + 14] = 1.0f - clipOut[14];
+
+                        visibleCount++;
+                    }
+
+                    // Triangle 2: p0, p2, p3
+                    float cross2 = (projTemp[6] - projTemp[0]) * (projTemp[10] - projTemp[1]) - (projTemp[7] - projTemp[1]) * (projTemp[9] - projTemp[0]);
+                    if (cross2 > 0) {
+                        ensureBatchCapacity(visibleCount + 1);
+                        int offset = visibleCount * 15;
+                        batchBuffer[offset]      = projTemp[0];
+                        batchBuffer[offset + 1]  = projTemp[1];
+                        batchBuffer[offset + 2]  = projTemp[2];
+                        batchBuffer[offset + 3]  = clipOut[3];
+                        batchBuffer[offset + 4]  = 1.0f - clipOut[4];
+
+                        batchBuffer[offset + 5]  = projTemp[6];
+                        batchBuffer[offset + 6]  = projTemp[7];
+                        batchBuffer[offset + 7]  = projTemp[8];
+                        batchBuffer[offset + 8]  = clipOut[13];
+                        batchBuffer[offset + 9]  = 1.0f - clipOut[14];
+
+                        batchBuffer[offset + 10] = projTemp[9];
+                        batchBuffer[offset + 11] = projTemp[10];
+                        batchBuffer[offset + 12] = projTemp[11];
+                        batchBuffer[offset + 13] = clipOut[18];
+                        batchBuffer[offset + 14] = 1.0f - clipOut[19];
+
+                        visibleCount++;
+                    }
+                }
+            }
         }
 
         if (visibleCount > 0) {
@@ -192,11 +323,35 @@ public final class RenderPipeline {
     }
 
     public void postProcess() {
+        if (camera.depthVisualizer) {
+            int w = fb.width;
+            int h = fb.height;
+            int[] pixels = fb.pixels;
+            float[] zBuf = fb.zBuffer;
+            float maxDepth = 1800.0f;
+            java.util.stream.IntStream.range(0, h).parallel().forEach(y -> {
+                int rowOffset = y * w;
+                for (int x = 0; x < w; x++) {
+                    int idx = rowOffset + x;
+                    float d = zBuf[idx];
+                    if (d >= 9999.0f) {
+                        pixels[idx] = 0x000000;
+                    } else {
+                        float norm = (maxDepth - d) / maxDepth;
+                        if (norm < 0.0f) norm = 0.0f;
+                        if (norm > 1.0f) norm = 1.0f;
+                        int val = (int)(norm * 255);
+                        pixels[idx] = (val << 16) | (val << 8) | val;
+                    }
+                }
+            });
+        }
+
         if (camera.fisheyeEnabled && camera.fisheyeStrength != 0.0f) {
             int w = fb.width;
             int h = fb.height;
             int[] pixels = fb.pixels;
-            int[] temp = new int[pixels.length];
+            int[] temp = fb.scratchPixels;
             float halfW = w / 2.0f;
             float halfH = h / 2.0f;
             float strength = camera.fisheyeStrength;

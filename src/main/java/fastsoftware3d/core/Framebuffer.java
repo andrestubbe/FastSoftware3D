@@ -13,12 +13,14 @@ public final class Framebuffer {
     public final int height;
     public final int[] pixels;
     public final float[] zBuffer;
+    public final int[] scratchPixels;
 
     public Framebuffer(int width, int height, int[] pixels) {
         this.width = width;
         this.height = height;
         this.pixels = pixels;
         this.zBuffer = new float[width * height];
+        this.scratchPixels = new int[width * height];
     }
 
     /**

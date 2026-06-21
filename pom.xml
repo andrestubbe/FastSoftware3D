@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>FastSoftware3D</name>
-    <description>High-performance software 3D renderer and console terminal engine for Java</description>
+    <description>High-performance software 3D renderer for Java</description>
     <url>https://github.com/andrestubbe/FastSoftware3D</url>
 
     <properties>

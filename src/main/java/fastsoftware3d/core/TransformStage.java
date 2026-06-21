@@ -11,6 +11,15 @@ public final class TransformStage {
      * Transform a world-space point into camera-space.
      */
     public float[] worldToCamera(float wx, float wy, float wz, Camera cam) {
+        float[] res = new float[3];
+        worldToCameraZeroAlloc(wx, wy, wz, cam, res, 0);
+        return res;
+    }
+
+    /**
+     * Transform a world-space point into camera-space with zero allocations.
+     */
+    public void worldToCameraZeroAlloc(float wx, float wy, float wz, Camera cam, float[] dest, int offset) {
         float tx = wx - cam.x;
         float ty = wy - cam.y;
         float tz = wz - cam.z;
@@ -28,7 +37,12 @@ public final class TransformStage {
         float y2 = ty * cosP - z1 * sinP;
         float z2 = ty * sinP + z1 * cosP;
 
-        return new float[]{x2, y2, z2};
+        // Roll rotation around Z axis (by -cam.roll for view space)
+        float cosR = (float) Math.cos(-cam.roll);
+        float sinR = (float) Math.sin(-cam.roll);
+        dest[offset]     = x2 * cosR - y2 * sinR;
+        dest[offset + 1] = x2 * sinR + y2 * cosR;
+        dest[offset + 2] = z2;
     }
 
     /**

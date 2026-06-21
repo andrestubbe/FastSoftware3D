@@ -27,73 +27,119 @@ public class CameraController {
     public volatile float baseFov = 150.0f;
     public volatile boolean asciiMode = false;
     public volatile boolean collisionEnabled = false;
+    public volatile boolean edgeAware = false;
+
+    // Velocity and smoothing state for inertia
+    public float currentVelForward = 0.0f;
+    public float currentVelStrafe = 0.0f;
+    public float movementSmoothing = 8.0f; // factor to control smoothing (lower = smoother/slidey, higher = instant)
+
+    // Turning/Banking state
+    public float lastYaw = 0.0f;
+    public float currentRotVelocity = 0.0f;
+    public float rotationSmoothing = 12.0f;
+    public float bankingFactor = 0.08f; // controls camera roll tilt when turning
+
+    // Head bobbing state
+    public float bobTime = 0.0f;
+    public float currentBobY = 0.0f;
+    public float bobAmplitude = 4.0f;  // peak height of bobbing
+    public float bobFrequency = 7.0f;  // speed of bobbing
 
     public CameraController(Camera camera) {
         this.camera = camera;
         this.baseFov = camera.fov;
+        this.lastYaw = camera.yaw;
     }
 
     public float update(float deltaTime) {
-        float speed = 200.0f * deltaTime;
         float rotSpeed = 1.5f * deltaTime;
 
-        // SHIFT acceleration
-        if (shiftDown) speed *= 3.0f;
+        // 1. Process keyboard rotations first
+        if (rotLeft)  camera.yaw -= rotSpeed;
+        if (rotRight) camera.yaw += rotSpeed;
+        if (rotUp)    camera.pitch = Math.min(1.4f, camera.pitch + rotSpeed);
+        if (rotDown)  camera.pitch = Math.max(-1.4f, camera.pitch - rotSpeed);
+
+        // 2. Calculate turning rate and smooth it for banking tilt
+        float deltaYaw = camera.yaw - lastYaw;
+        lastYaw = camera.yaw;
+
+        float targetRotVelocity = 0.0f;
+        if (deltaTime > 0.0f) {
+            targetRotVelocity = deltaYaw / deltaTime;
+        }
+        float maxRotVel = 5.0f;
+        targetRotVelocity = Math.max(-maxRotVel, Math.min(maxRotVel, targetRotVelocity));
+        float rotInterpolationStep = Math.min(1.0f, rotationSmoothing * deltaTime);
+        currentRotVelocity += (targetRotVelocity - currentRotVelocity) * rotInterpolationStep;
+
+        // 3. Calculate target movement velocities based on keys
+        float targetVelForward = 0.0f;
+        if (moveFwd) targetVelForward += 1.0f;
+        if (moveBwd) targetVelForward -= 1.0f;
+
+        float targetVelStrafe = 0.0f;
+        if (strafeRight) targetVelStrafe += 1.0f;
+        if (strafeLeft)  targetVelStrafe -= 1.0f;
+
+        // Normalize direction vector to keep movement speed consistent diagonally
+        float len = (float) Math.sqrt(targetVelForward * targetVelForward + targetVelStrafe * targetVelStrafe);
+        if (len > 0.0f) {
+            targetVelForward /= len;
+            targetVelStrafe /= len;
+        }
+
+        // Apply movement speed bases
+        float maxSpeed = 200.0f;
+        if (shiftDown) maxSpeed *= 3.0f;
+
+        targetVelForward *= maxSpeed;
+        targetVelStrafe *= maxSpeed;
+
+        // Smoothly interpolate current velocity to target velocity (inertia/friction)
+        float interpolationStep = Math.min(1.0f, movementSmoothing * deltaTime);
+        currentVelForward += (targetVelForward - currentVelForward) * interpolationStep;
+        currentVelStrafe  += (targetVelStrafe - currentVelStrafe) * interpolationStep;
 
         // Forward vector (yaw-only to keep movement on the XZ plane)
         float fwdX = -(float) Math.sin(camera.yaw);
         float fwdZ = (float) Math.cos(camera.yaw);
 
-        float nextX = camera.x;
-        float nextZ = camera.z;
-
-        if (moveFwd) {
-            nextX += fwdX * speed;
-            nextZ += fwdZ * speed;
-        }
-        if (moveBwd) {
-            nextX -= fwdX * speed;
-            nextZ -= fwdZ * speed;
-        }
-
         // Right vector (perpendicular to forward)
         float rightX = (float) Math.cos(camera.yaw);
         float rightZ = (float) Math.sin(camera.yaw);
 
-        if (strafeLeft) {
-            nextX -= rightX * speed;
-            nextZ -= rightZ * speed;
-        }
-        if (strafeRight) {
-            nextX += rightX * speed;
-            nextZ += rightZ * speed;
-        }
+        // Calculate next position using smoothed velocities
+        float nextX = camera.x + (fwdX * currentVelForward + rightX * currentVelStrafe) * deltaTime;
+        float nextZ = camera.z + (fwdZ * currentVelForward + rightZ * currentVelStrafe) * deltaTime;
 
-        // Collision bounds (scaled based on wolfenstein.obj coordinates)
-        // Outer room boundaries: X in [-2000, 2000], Z in [-900, 500] approx.
-        // Columns located at grid points like X = -1800, -1400, -1200, -1000, etc.
+        // 4. Leaning roll interpolation (flipped axis, 2.5 degrees tilt + banking on turning)
+        float targetRoll = 0.0f;
+        if (strafeLeft && !strafeRight) {
+            targetRoll = (float) Math.toRadians(2.5f);
+        } else if (strafeRight && !strafeLeft) {
+            targetRoll = (float) Math.toRadians(-2.5f);
+        }
+        // Add rotational banking: turning left (negative yaw velocity) tilts camera left
+        targetRoll += -currentRotVelocity * bankingFactor;
+
+        float rollSpeed = 10.0f * deltaTime;
+        camera.roll += (targetRoll - camera.roll) * Math.min(1.0f, rollSpeed);
+
+        // 5. Collision bounds checks
         boolean collision = false;
-        
         if (collisionEnabled) {
-            // Room boundaries mapping:
-            // The corridor at the entrance goes from X = -2000 to -1800, and Z = -900 to 500.
-            // Let's restrict the player to stay inside the room corridors.
-            // Outer wall bounds:
             if (nextX < -2000.0f || nextX > 2000.0f || nextZ < -900.0f || nextZ > 500.0f) {
                 collision = true;
             }
-
-            // Pillar collision detection based on ground-level coordinates (approx. Y=0 to Y=2 Blender units, scaled by 100)
             float pillarRadius = 35.0f; 
             if (!collision) {
-                // Check pillars grid in the hall: X from -1800 to 1800 (step 200), Z from -700 to 300 (step 200)
                 for (float px = -1800.0f; px <= 1800.0f; px += 200.0f) {
                     for (float pz = -700.0f; pz <= 300.0f; pz += 200.0f) {
-                        // Skip the entrance area (approx. X: -1900, Z: -226) where the player spawns so they don't get stuck instantly
                         if (Math.abs(px - -1800.0f) < 50.0f && Math.abs(pz - -300.0f) < 150.0f) {
                             continue;
                         }
-                        
                         float dx = nextX - px;
                         float dz = nextZ - pz;
                         if (dx * dx + dz * dz < (pillarRadius + 15.0f) * (pillarRadius + 15.0f)) {
@@ -111,13 +157,21 @@ public class CameraController {
             camera.z = nextZ;
         }
 
-        if (moveUp) camera.y += speed;
-        if (moveDown) camera.y -= speed;
+        // 6. Up/Down flying movement
+        if (moveUp)   camera.y += maxSpeed * deltaTime;
+        if (moveDown) camera.y -= maxSpeed * deltaTime;
 
-        if (rotLeft)  camera.yaw -= rotSpeed;
-        if (rotRight) camera.yaw += rotSpeed;
-        if (rotUp) camera.pitch = Math.min(1.4f, camera.pitch + rotSpeed);
-        if (rotDown) camera.pitch = Math.max(-1.4f, camera.pitch - rotSpeed);
+        // 7. Head bobbing calculation (Doom bobbing)
+        float speedSq = currentVelForward * currentVelForward + currentVelStrafe * currentVelStrafe;
+        float targetBobY = 0.0f;
+        if (speedSq > 10.0f) {
+            float currentSpeed = (float) Math.sqrt(speedSq);
+            // Bobbing frequency scales with velocity
+            bobTime += deltaTime * bobFrequency * (currentSpeed / 200.0f);
+            targetBobY = (float) Math.sin(bobTime) * bobAmplitude;
+        }
+        // Smoothly interpolate currentBobY towards targetBobY
+        currentBobY += (targetBobY - currentBobY) * Math.min(1.0f, 15.0f * deltaTime);
 
         if (fovInc) baseFov = Math.min(170.0f, baseFov + 40.0f * deltaTime);
         if (fovDec) baseFov = Math.max(10.0f, baseFov - 40.0f * deltaTime);
@@ -255,12 +309,26 @@ public class CameraController {
                 }
                 return false;
 
+            case 0x48: // H → Toggle Edge-Aware Downsampling (HBSR)
+                if (isPressed) {
+                    edgeAware = !edgeAware;
+                    return true;
+                }
+                return false;
+
             case 0x46: // F key (formerly FXAA, now does nothing or can be ignored)
                 return false;
 
             case 0x47: // G → Cycle Mipmap Mode (0=None, 1=Tweaked Discrete, 2=Dithered, 3=Bilinear Level Blend)
                 if (isPressed) {
                     fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode = (fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode + 1) % 4;
+                    return true;
+                }
+                return false;
+
+            case 0x72: // F3 → Toggle Depth Visualizer
+                if (isPressed) {
+                    camera.depthVisualizer = !camera.depthVisualizer;
                     return true;
                 }
                 return false;

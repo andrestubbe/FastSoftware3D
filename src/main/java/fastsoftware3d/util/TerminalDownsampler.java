@@ -1,4 +1,4 @@
-package fastsoftware3d.frontend.terminal;
+package fastsoftware3d.util;
 
 /**
  * Utility for SSAA downsampling with box filtering.
@@ -10,7 +10,7 @@ public class TerminalDownsampler {
      * Downsample src buffer to dest buffer using box filter averaging.
      * Each destination pixel is the average of (factor × factor) source pixels.
      */
-    public static void downsample(int[] src, int srcW, int srcH, 
+    public static void downsample(int[] src, int srcW, int srcH,
                                    int[] dest, int destW, int destH, int factor) {
         for (int y = 0; y < destH; y++) {
             for (int x = 0; x < destW; x++) {

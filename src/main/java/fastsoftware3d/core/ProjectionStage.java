@@ -17,18 +17,32 @@ public final class ProjectionStage {
      * @return [sx, sy, depth] screen-space coords (depth = -z)
      */
     public float[] project(float[] camPoint, Camera cam, int width, int height) {
-        float x = camPoint[0];
-        float y = camPoint[1];
-        float z = camPoint[2];
+        float[] res = new float[3];
+        boolean valid = projectZeroAlloc(camPoint[0], camPoint[1], camPoint[2], cam, width, height, res, 0);
+        return valid ? res : null;
+    }
 
-        if (z < 0.1f) return null;
+    /**
+     * Project a camera-space point into screen-space with zero allocations.
+     *
+     * @param cx, cy, cz in camera space
+     * @param cam        camera (for FOV)
+     * @param width      framebuffer width
+     * @param height     framebuffer height
+     * @param dest       destination array
+     * @param destOff    offset in destination array
+     * @return true if point is in front of the camera and projected successfully, false otherwise
+     */
+    public boolean projectZeroAlloc(float cx, float cy, float cz, Camera cam, int width, int height, float[] dest, int destOff) {
+        if (cz < 2.0f) return false;
 
         float focalLength = (float) (width / 2.0f / Math.tan(Math.toRadians(cam.fov / 2.0f)));
-        float scale = focalLength / z;
+        float scale = focalLength / cz;
 
-        float sx = width  / 2.0f + x * scale;
-        float sy = height / 2.0f - y * scale;
+        dest[destOff]     = width  / 2.0f + cx * scale;
+        dest[destOff + 1] = height / 2.0f - cy * scale;
+        dest[destOff + 2] = cz;
 
-        return new float[]{sx, sy, z};
+        return true;
     }
 }

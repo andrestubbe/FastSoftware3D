@@ -6,10 +6,12 @@ public class Camera {
     public float z;
     public float yaw;
     public float pitch;
+    public float roll = 0.0f;
     public float fov;
 
     public boolean fisheyeEnabled = false;
     public float fisheyeStrength = 0.15f;
+    public boolean depthVisualizer = false;
 
     public Camera() {
         this(465.0f, 360.0f, -612.0f, -0.68f, -0.54f, 150.0f);
@@ -40,7 +42,12 @@ public class Camera {
         float y2 = ty * cosP - z1 * sinP;
         float z2 = ty * sinP + z1 * cosP;
 
-        return new float[]{x2, y2, z2};
+        float cosR = (float) Math.cos(-roll);
+        float sinR = (float) Math.sin(-roll);
+        float x3 = x2 * cosR - y2 * sinR;
+        float y3 = x2 * sinR + y2 * cosR;
+
+        return new float[]{x3, y3, z2};
     }
 
     public float[] project(float[] cameraPoint, int width, int height) {
@@ -48,7 +55,7 @@ public class Camera {
         float cy = cameraPoint[1];
         float cz = cameraPoint[2];
 
-        if (cz <= 0.05f) return null;
+        if (cz <= 2.0f) return null;
 
         float focalLength = (float) (width / 2.0f / Math.tan(Math.toRadians(fov / 2.0f)));
         float scale = focalLength / cz;

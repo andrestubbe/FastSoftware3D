@@ -11,6 +11,7 @@ import fastsoftware3d.scene.Scene;
 import fastsoftware3d.scene.Renderer3D;
 import fastsoftware3d.scene.SceneFactory;
 import fastsoftware3d.buffers.RenderBuffers;
+import fastsoftware3d.util.TerminalDownsampler;
 
 import javax.swing.JFrame;
 import java.awt.Canvas;
@@ -234,7 +235,7 @@ public class DemoWolf extends Canvas {
                     int renderH = baseH * ssaaFactor;
 
                     if (ssaaFactor > 1 && buffers.downsamplePixels != null) {
-                        fastsoftware3d.frontend.terminal.TerminalDownsampler.downsample(buffers.renderPixels, renderW, renderH,
+                        fastsoftware3d.util.TerminalDownsampler.downsample(buffers.renderPixels, renderW, renderH,
                                 buffers.downsamplePixels, baseW, baseH, ssaaFactor);
                         for (int y = 0; y < baseH && y < HEIGHT; y++) {
                             for (int x = 0; x < baseW && x < WIDTH; x++) {
@@ -289,8 +290,19 @@ public class DemoWolf extends Canvas {
         // Hide cursor on the parent frame
         java.awt.image.BufferedImage cursorImg = new java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB);
         java.awt.Cursor blankCursor = java.awt.Toolkit.getDefaultToolkit().createCustomCursor(
-                cursorImg, new Point(0, 0), "blank cursor");
+                cursorImg, new java.awt.Point(0, 0), "blank cursor");
         frame.setCursor(blankCursor);
+
+        frame.addNotify();
+        try {
+            long hwnd = fasttheme.FastTheme.getWindowHandle(frame);
+            fasttheme.FastTheme.setTitleBarDarkMode(hwnd, true);
+            fasttheme.FastTheme.setTitleBarColor(hwnd, 0, 0, 0);
+            fasttheme.FastTheme.setTitleBarTextColor(hwnd, 255, 255, 255);
+            fasttheme.FastTheme.setWindowTransparency(hwnd, 224);
+        } catch (Exception e) {
+            System.err.println("FastTheme dark mode failed: " + e.getMessage());
+        }
 
         frame.setVisible(true);
         canvas.start();
