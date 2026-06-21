@@ -1,4 +1,4 @@
-# FastSoftware3D 0.1.0 [ALPHA-2026-06] — High-Performance Software 3D Renderer & Console Terminal Engine for Java
+# FastSoftware3D 0.1.0 [ALPHA-2026-06] — High-Performance Software 3D Renderer for Java
 
 [![Status](https://img.shields.io/badge/status-0.1.0-brightgreen.svg)](https://github.com/andrestubbe/FastSoftware3D/releases/tag/0.1.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -6,16 +6,14 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010+-lightgrey.svg)]()
 [![JitPack](https://img.shields.io/badge/JitPack-ready-green.svg)](https://jitpack.io/#andrestubbe/FastSoftware3D)
 
-**⚡ A micro-optimized, zero-dependency software 3D rendering pipeline and console terminal engine for Java. Engineered for high-refresh rates, 24-bit True Color output, AVX2 SIMD vectorization, dynamic SSAA downsampling, and multi-level material mipmapping.**
+**⚡ A micro-optimized, zero-dependency software 3D rendering pipeline for Java. Engineered for high-refresh rates, AVX2 SIMD vectorization, dynamic SSAA downsampling, and multi-level material mipmapping.**
 
-FastSoftware3D is the high-performance 3D graphics substrate of the **FastJava** ecosystem. It introduces a lightweight software rasterizer kernel operating completely independently of heavy graphics APIs, rendering perspective-correct textured triangles to desktop framebuffers or directly to terminal viewports.
+FastSoftware3D is the high-performance 3D graphics substrate of the **FastJava** ecosystem. It introduces a lightweight software rasterizer kernel operating completely independently of heavy graphics APIs, rendering perspective-correct textured triangles to desktop framebuffers or offscreen pixel arrays.
 
-To achieve a completely responsive, zero-latency desktop and terminal experience, FastSoftware3D is designed to pair natively with the input, styling, and helper modules of the **FastJava** ecosystem:
+To achieve a completely responsive, zero-latency desktop experience, FastSoftware3D is designed to pair natively with the helper modules of the **FastJava** ecosystem:
 
-* ⚡ **[FastANSI](https://github.com/andrestubbe/FastANSI)** — Micro-optimized, garbage-free ANSI escape sequence builder and parser for terminal graphics.
-* 🚀 **[FastTerminal](https://github.com/andrestubbe/FastTerminal)** — Direct, low-latency, asynchronous raw console renderer and raw global keyboard/mouse hooks.
-* 🖱️ **[FastMouse](https://github.com/andrestubbe/FastMouse)** — Precise hardware-level and virtual console-mode input tracking.
 * 🎬 **[FastAnimation](https://github.com/andrestubbe/FastAnimation)** — Direct-memory frame animation and timeline synchronization.
+* 🚀 **[FastTerminal3D](https://github.com/andrestubbe/FastTerminal3D)** — For rendering the 3D pipeline directly into a command console viewport.
 
 ---
 
@@ -39,7 +37,7 @@ To achieve a completely responsive, zero-latency desktop and terminal experience
 
 ## Why FastSoftware3D?
 
-Standard software renderers in Java suffer from heavy GC overhead, slow loop iterations, and pixel blitting bottlenecks. FastSoftware3D solves this by moving the inner rasterization scanlines to a native C++ JNI kernel. Utilizing 256-bit AVX2 SIMD registers, the engine tests and processes 8 horizontal pixels concurrently. It enforces zero GC allocations during active rendering loops and couples tightly with the FastTerminal viewport for instantaneous console output diffs.
+Standard software renderers in Java suffer from heavy GC overhead, slow loop iterations, and pixel blitting bottlenecks. FastSoftware3D solves this by moving the inner rasterization scanlines to a native C++ JNI kernel. Utilizing 256-bit AVX2 SIMD registers, the engine tests and processes 8 horizontal pixels concurrently. It enforces zero GC allocations during active rendering loops to guarantee completely stutter-free execution.
 
 ---
 
@@ -53,14 +51,13 @@ Standard software renderers in Java suffer from heavy GC overhead, slow loop ite
   * **Bilinear Level Blend**: Seamlessly interpolates colors between the two nearest mipmap levels.
 * **🚫 Zero GC Allocations** — Zero allocations inside the main rendering loops, preventing GC pause spikes.
 * **🎨 Anti-Aliasing (SSAA)** — Dynamic Super-Sample Anti-Aliasing (SSAA) supporting 1x, 2x, 4x, 8x, and 16x downscaled rendering factors.
-* **📺 Alternate Console Buffers** — Directly outputs to standard terminal cells in 24-bit True Color using ANSI escape sequences.
 * **🔮 Camera Post-Effects** — Integrated barrel/pincushion lens distortion and linear depth fog shaders.
 
 ---
 
 ## Interactive Keyboard Shortcuts (HUD)
 
-Use these dynamic keys inside the desktop and terminal demos to experiment with parameters at runtime:
+Use these dynamic keys inside the desktop demos to experiment with parameters at runtime:
 
 | Key | Action | Details |
 |---|---|---|
@@ -68,7 +65,6 @@ Use these dynamic keys inside the desktop and terminal demos to experiment with 
 | **`G`** | **Cycle Mipmap Mode** | Switch between: `None`, `Tweaked Discrete`, `Dithered`, or `Bilinear Level Blend`. |
 | **`K`** | **Toggle Lens Distortion** | Enable or disable Barrel/Fisheye post-processing. |
 | **`U` / `I`** | **Modify Lens Strength** | Adjust lens distortion coefficient from barrel (+) to pincushion (-). |
-| **`M`** | **Toggle Render Output** | Switch viewport display between Unicode half-blocks and character glyphs. |
 | **`C`** | **Toggle Collisions** | Enable or disable player collision boxes. |
 
 ---
@@ -201,6 +197,18 @@ Ready-to-run batch scripts located in the root directory:
 ## License
 
 MIT License — See [LICENSE](LICENSE) for details.
+
+---
+
+## Related Projects
+
+- [FastTerminal](https://github.com/andrestubbe/FastTerminal) — Direct, low-latency raw console renderer and keyboard hooks
+- [FastANSI](https://github.com/andrestubbe/FastANSI) — Micro-optimized ANSI escape sequence builder and parser
+- [FastMouse](https://github.com/andrestubbe/FastMouse) — Precise hardware-level and virtual console-mode input tracking
+- [FastJSON](https://github.com/andrestubbe/FastJSON) — Zero-allocation JSON parser
+- [FastFileScrape](https://github.com/andrestubbe/FastFileScrape) — High-throughput file scraping utility
+- [FastGLOB](https://github.com/andrestubbe/FastGLOB) — Native performance glob matching
+- [FastCore](https://github.com/andrestubbe/FastCore) — Native JNI Loader and Utilities
 
 ---
 
