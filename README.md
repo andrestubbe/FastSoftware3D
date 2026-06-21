@@ -137,7 +137,7 @@ public class Demo {
 
 ## Installation
 
-### Option 1: Maven (JitPack)
+### Option 1: Maven (Recommended)
 
 Add the JitPack repository and the library dependency to your `pom.xml`:
 
@@ -184,11 +184,23 @@ dependencies {
 
 Ready-to-run batch scripts located in the root directory:
 *   `run-demo.bat` — Launches the interactive Swing desktop 3D window.
-*   `run-terminal-demo.bat` — Renders a textured 3D spinning box inside the terminal viewport.
-*   `run-wolf-terminal-demo.bat` — Renders an interactive first-person Wolfenstein-like textured corridor dungeon inside your command console.
+
+---
+
+## Documentation
+
+* **[COMPILE.md](docs/COMPILE.md)**: Full compilation guide (Maven Build Setup).
+* **[REFERENCE.md](docs/REFERENCE.md)**: Exhaustive catalog of API methods and engine architecture.
+* **[PHILOSOPHY.md](docs/PHILOSOPHY.md)**: Zero-allocation and low-overhead processing designs.
+* **[ROADMAP.md](docs/ROADMAP.md)**: Planned milestone features and performance extensions.
+* **[CHANGELOG.md](docs/CHANGELOG.md)**: Version history and engine updates.
 
 ---
 
 ## License
 
-FastSoftware3D is released under the **MIT License**.
+MIT License — See [LICENSE](LICENSE) for details.
+
+---
+
+**Part of the FastJava Ecosystem** — *Making the JVM faster. Small package. Maximum speed. Zero bloat. 🚀📋*
