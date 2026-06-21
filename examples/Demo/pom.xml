@@ -34,24 +34,26 @@
         <!-- Uses the locally built JAR from the parent project.      -->
         <!-- Run 'mvn clean package' in the parent directory first.   -->
         <!-- ======================================================== -->
+        <!--
         <dependency>
             <groupId>com.github.andrestubbe</groupId>
             <artifactId>FastSoftware3D</artifactId>
             <version>main-SNAPSHOT</version>
         </dependency>
+        -->
         
         <!-- ======================================================== -->
         <!-- PRODUCTION MODE (JitPack)                                -->
         <!-- Comment out the block above and uncomment this block     -->
         <!-- to test exactly how a real user would download it.       -->
         <!-- ======================================================== -->
-        <!--
+        
         <dependency>
             <groupId>com.github.andrestubbe</groupId>
-            <artifactId>fastsoftware3d</artifactId>
+            <artifactId>FastSoftware3D</artifactId>
             <version>0.1.0</version>
         </dependency>
-        -->
+        
     </dependencies>
     
     <build>
