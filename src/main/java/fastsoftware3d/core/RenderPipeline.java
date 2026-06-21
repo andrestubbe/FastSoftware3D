@@ -24,6 +24,16 @@ public final class RenderPipeline {
     private final ProjectionStage projectionStage = new ProjectionStage();
     private final RasterStage rasterStage = new RasterStage();
 
+    private float[] batchBuffer = new float[1024 * 15]; // start with capacity for 1024 triangles
+
+    private void ensureBatchCapacity(int triCount) {
+        int reqLen = triCount * 15;
+        if (reqLen > batchBuffer.length) {
+            int newLen = Math.max(reqLen, batchBuffer.length * 2);
+            batchBuffer = Arrays.copyOf(batchBuffer, newLen);
+        }
+    }
+
     public RenderPipeline(Camera camera, Framebuffer fb, TriangleRasterizer rasterizer) {
         this.camera = camera;
         this.fb = fb;
@@ -127,6 +137,7 @@ public final class RenderPipeline {
             }
         }
 
+        int visibleCount = 0;
         for (ObjLoader.Face face : model.faces) {
             int i0 = face.vIndices[0];
             int i1 = face.vIndices[1];
@@ -152,16 +163,32 @@ public final class RenderPipeline {
             float[] uv1 = face.uvIndices[1] >= 0 ? model.uvs.get(face.uvIndices[1]) : new float[]{1, 0};
             float[] uv2 = face.uvIndices[2] >= 0 ? model.uvs.get(face.uvIndices[2]) : new float[]{0, 1};
 
-            // Stage 4: Rasterize
-            rasterStage.rasterizeTriangle(
-                    p0, p1, p2,
-                    new float[]{uv0[0], 1.0f - uv0[1]},
-                    new float[]{uv1[0], 1.0f - uv1[1]},
-                    new float[]{uv2[0], 1.0f - uv2[1]},
-                    material, fb, rasterizer
-            );
+            ensureBatchCapacity(visibleCount + 1);
+            int offset = visibleCount * 15;
+            batchBuffer[offset]      = p0[0];
+            batchBuffer[offset + 1]  = p0[1];
+            batchBuffer[offset + 2]  = p0[2];
+            batchBuffer[offset + 3]  = uv0[0];
+            batchBuffer[offset + 4]  = 1.0f - uv0[1];
+
+            batchBuffer[offset + 5]  = p1[0];
+            batchBuffer[offset + 6]  = p1[1];
+            batchBuffer[offset + 7]  = p1[2];
+            batchBuffer[offset + 8]  = uv1[0];
+            batchBuffer[offset + 9]  = 1.0f - uv1[1];
+
+            batchBuffer[offset + 10] = p2[0];
+            batchBuffer[offset + 11] = p2[1];
+            batchBuffer[offset + 12] = p2[2];
+            batchBuffer[offset + 13] = uv2[0];
+            batchBuffer[offset + 14] = 1.0f - uv2[1];
+
+            visibleCount++;
         }
 
+        if (visibleCount > 0) {
+            rasterizer.drawTriangles(batchBuffer, visibleCount, material, fb);
+        }
     }
 
     public void postProcess() {

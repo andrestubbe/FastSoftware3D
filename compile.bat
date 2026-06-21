@@ -67,7 +67,7 @@ call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat"
 if not exist build mkdir build
 
 :: Compile C++ source
-cl.exe /O2 /W3 /MD /EHsc /LD /std:c++17 ^
+cl.exe /O2 /W3 /MD /EHsc /LD /std:c++17 /arch:AVX2 ^
    /I "%JAVA_HOME%\include" ^
    /I "%JAVA_HOME%\include\win32" ^
    /Fo:build\ ^

@@ -2,6 +2,7 @@ LIBRARY fastsoftware3d
 EXPORTS
     ; JNI Method Exports - Rasterizer
     Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTexturedTriangleNative
+    Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTexturedTrianglesNative
 
     ; JNI Method Exports - Terminal
     Java_fastsoftware3d_terminal_FastTerminal_getTerminalSize
@@ -13,3 +14,5 @@ EXPORTS
     Java_fastsoftware3d_terminal_FastTerminal_setSystemCursorVisible
     Java_fastsoftware3d_terminal_FastTerminal_readConsoleOutput
     Java_fastsoftware3d_terminal_FastTerminal_getCursorPosition
+    Java_fastsoftware3d_terminal_FastTerminalRenderer_renderAnsiNative
+    Java_fastsoftware3d_terminal_FastTerminal_setTitle

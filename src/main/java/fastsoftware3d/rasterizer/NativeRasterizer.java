@@ -10,6 +10,7 @@ import fastsoftware3d.material.Material;
  */
 public final class NativeRasterizer implements TriangleRasterizer {
 
+    public static volatile int mipmapMode = 1; // 0 = None, 1 = Tweaked/Pushed, 2 = Dithered, 3 = Blended/Trilinear
     private static boolean nativeAvailable = true;
     private final JavaRasterizer fallback = new JavaRasterizer();
 
@@ -43,8 +44,12 @@ public final class NativeRasterizer implements TriangleRasterizer {
                     x0, y0, z0, u0, v0,
                     x1, y1, z1, u1, v1,
                     x2, y2, z2, u2, v2,
-                    fb.pixels, fb.zBuffer, material.texels, fb.width, fb.height,
-                    material.texWidth, material.texHeight
+                    fb.pixels, fb.zBuffer,
+                    material.mipmapData, material.mipmapOffsets,
+                    material.mipmapWidths, material.mipmapHeights,
+                    material.mipmapLevels,
+                    mipmapMode,
+                    fb.width, fb.height
             );
         } catch (UnsatisfiedLinkError e) {
             nativeAvailable = false;
@@ -54,13 +59,56 @@ public final class NativeRasterizer implements TriangleRasterizer {
                     x2, y2, z2, u2, v2,
                     material, fb);
         }
+     }
+
+    @Override
+    public void drawTriangles(
+            float[] triangleData,
+            int triangleCount,
+            Material material,
+            Framebuffer fb
+    ) {
+        if (!nativeAvailable) {
+            fallback.drawTriangles(triangleData, triangleCount, material, fb);
+            return;
+        }
+        try {
+            drawTexturedTrianglesNative(
+                    triangleData,
+                    triangleCount,
+                    fb.pixels, fb.zBuffer,
+                    material.mipmapData, material.mipmapOffsets,
+                    material.mipmapWidths, material.mipmapHeights,
+                    material.mipmapLevels,
+                    mipmapMode,
+                    fb.width, fb.height
+            );
+        } catch (UnsatisfiedLinkError e) {
+            nativeAvailable = false;
+            fallback.drawTriangles(triangleData, triangleCount, material, fb);
+        }
     }
 
     private static native void drawTexturedTriangleNative(
             float x0, float y0, float z0, float u0, float v0,
             float x1, float y1, float z1, float u1, float v1,
             float x2, float y2, float z2, float u2, float v2,
-            int[] pixels, float[] zBuffer, int[] texels, int width, int height,
-            int texWidth, int texHeight
+            int[] pixels, float[] zBuffer,
+            int[] mipmapData, int[] mipmapOffsets,
+            int[] mipmapWidths, int[] mipmapHeights,
+            int mipmapLevels,
+            int mipmapMode,
+            int width, int height
+    );
+
+    private static native void drawTexturedTrianglesNative(
+            float[] triangleData,
+            int triangleCount,
+            int[] pixels, float[] zBuffer,
+            int[] mipmapData, int[] mipmapOffsets,
+            int[] mipmapWidths, int[] mipmapHeights,
+            int mipmapLevels,
+            int mipmapMode,
+            int width, int height
     );
 }

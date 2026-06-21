@@ -23,4 +23,22 @@ public interface TriangleRasterizer {
             Material material,
             Framebuffer fb
     );
+
+    default void drawTriangles(
+            float[] triangleData,
+            int triangleCount,
+            Material material,
+            Framebuffer fb
+    ) {
+        for (int i = 0; i < triangleCount; i++) {
+            int offset = i * 15;
+            drawTriangle(
+                    triangleData[offset],      triangleData[offset + 1],  triangleData[offset + 2],  triangleData[offset + 3],  triangleData[offset + 4],
+                    triangleData[offset + 5],  triangleData[offset + 6],  triangleData[offset + 7],  triangleData[offset + 8],  triangleData[offset + 9],
+                    triangleData[offset + 10], triangleData[offset + 11], triangleData[offset + 12], triangleData[offset + 13], triangleData[offset + 14],
+                    material,
+                    fb
+            );
+        }
+    }
 }

@@ -191,22 +191,14 @@ public class DemoWolfTerminal {
 
                 // Downsample SSAA render buffer to terminal half-block cells
                 writeHalfBlocks(renderPixels, cols * controller.ssaaFactor, rows * 2 * controller.ssaaFactor, canvas, cols, rows, controller.ssaaFactor);
-
-                // Draw FPS overlay in the top-right corner (green on black, no margin/padding)
-                String fpsStr = String.format("%d", (int) Math.round(realFps));
-                int textLen = fpsStr.length();
-                int startCol = cols - textLen;
-                if (startCol >= 0) {
-                    for (int i = 0; i < textLen; i++) {
-                        char c = fpsStr.charAt(i);
-                        canvas.writeCell(startCol + i, 0, c, 0x00FF00, 0x000000); // green on black
-                    }
-                }
             }
 
-            // Print XYZ to terminal title bar using ANSI escape sequence
-            System.out.print("\033]0;" + String.format("X: %.2f, Y: %.2f, Z: %.2f", camera.x, camera.y, camera.z) + "\007");
-            System.out.flush();
+            int mode = fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode;
+            String modeStr = "None";
+            if (mode == 1) modeStr = "Tweaked Discrete";
+            else if (mode == 2) modeStr = "Dithered";
+            else if (mode == 3) modeStr = "Bilinear Level Blend";
+            FastTerminal.setTitle(String.format("FPS: %d | X: %.2f, Y: %.2f, Z: %.2f | SSAA: %dx | Mipmap Mode: %s", (int) Math.round(realFps), camera.x, camera.y, camera.z, controller.ssaaFactor, modeStr));
 
             termRenderer.render();
 

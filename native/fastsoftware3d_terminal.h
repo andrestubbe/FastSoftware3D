@@ -112,6 +112,18 @@ JNIEXPORT jintArray JNICALL Java_fastsoftware3d_terminal_FastTerminal_readConsol
  * @brief Returns the current console cursor position as [col, row] (0-based).
  */
 JNIEXPORT jintArray JNICALL Java_fastsoftware3d_terminal_FastTerminal_getCursorPosition(JNIEnv* env, jclass clazz);
+JNIEXPORT void JNICALL Java_fastsoftware3d_terminal_FastTerminal_setTitle(JNIEnv* env, jclass clazz, jstring title);
+
+/**
+ * @brief Performs high-performance double-buffered cell diffing and ANSI escape sequence building in C++.
+ */
+JNIEXPORT jint JNICALL Java_fastsoftware3d_terminal_FastTerminalRenderer_renderAnsiNative(
+    JNIEnv* env, jclass clazz,
+    jintArray compositeCPArray, jintArray compositeFgArray, jintArray compositeBgArray,
+    jintArray prevCPArray, jintArray prevFgArray, jintArray prevBgArray,
+    jbyteArray outBufferArray, jint width, jint height,
+    jboolean forceFullRedraw, jboolean diffRenderingEnabled, jboolean dirtyRectanglesEnabled
+);
 
 #ifdef __cplusplus
 }

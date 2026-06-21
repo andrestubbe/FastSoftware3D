@@ -38,8 +38,6 @@
             <groupId>com.github.andrestubbe</groupId>
             <artifactId>FastSoftware3D</artifactId>
             <version>main-SNAPSHOT</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/../../target/fastsoftware3d.jar</systemPath>
         </dependency>
         
         <!-- ======================================================== -->

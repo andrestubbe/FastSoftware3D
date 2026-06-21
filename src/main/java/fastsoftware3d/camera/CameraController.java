@@ -185,6 +185,41 @@ public class CameraController {
                 }
                 return false;
 
+            case 0x31: // 1 → SSAA 1x
+                if (isPressed) {
+                    ssaaFactor = 1;
+                    return true;
+                }
+                return false;
+
+            case 0x32: // 2 → SSAA 2x
+                if (isPressed) {
+                    ssaaFactor = 2;
+                    return true;
+                }
+                return false;
+
+            case 0x33: // 3 → SSAA 4x
+                if (isPressed) {
+                    ssaaFactor = 4;
+                    return true;
+                }
+                return false;
+
+            case 0x34: // 4 → SSAA 8x
+                if (isPressed) {
+                    ssaaFactor = 8;
+                    return true;
+                }
+                return false;
+
+            case 0x35: // 5 → SSAA 16x
+                if (isPressed) {
+                    ssaaFactor = 16;
+                    return true;
+                }
+                return false;
+
             case 0x4B: // K → Fisheye toggle
                 if (isPressed) {
                     camera.fisheyeEnabled = !camera.fisheyeEnabled;
@@ -221,6 +256,13 @@ public class CameraController {
                 return false;
 
             case 0x46: // F key (formerly FXAA, now does nothing or can be ignored)
+                return false;
+
+            case 0x47: // G → Cycle Mipmap Mode (0=None, 1=Tweaked Discrete, 2=Dithered, 3=Bilinear Level Blend)
+                if (isPressed) {
+                    fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode = (fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode + 1) % 4;
+                    return true;
+                }
                 return false;
         }
         return false;

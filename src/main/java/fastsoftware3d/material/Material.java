@@ -13,10 +13,78 @@ public final class Material {
     public final int texWidth;
     public final int texHeight;
 
+    public final int[] mipmapData;
+    public final int[] mipmapOffsets;
+    public final int[] mipmapWidths;
+    public final int[] mipmapHeights;
+    public final int mipmapLevels;
+
     public Material(int[] texels, int texWidth, int texHeight) {
         this.texels = texels;
         this.texWidth = texWidth;
         this.texHeight = texHeight;
+
+        // Generate mipmaps
+        int levels = 1;
+        int w = texWidth;
+        int h = texHeight;
+        while (w > 1 || h > 1) {
+            levels++;
+            w = Math.max(1, w / 2);
+            h = Math.max(1, h / 2);
+        }
+        this.mipmapLevels = levels;
+        this.mipmapOffsets = new int[levels];
+        this.mipmapWidths = new int[levels];
+        this.mipmapHeights = new int[levels];
+
+        int totalSize = 0;
+        w = texWidth;
+        h = texHeight;
+        for (int i = 0; i < levels; i++) {
+            mipmapWidths[i] = w;
+            mipmapHeights[i] = h;
+            mipmapOffsets[i] = totalSize;
+            totalSize += w * h;
+            w = Math.max(1, w / 2);
+            h = Math.max(1, h / 2);
+        }
+
+        this.mipmapData = new int[totalSize];
+        // Copy level 0 (base)
+        System.arraycopy(texels, 0, mipmapData, 0, texels.length);
+
+        // Generate downscaled levels using box filtering
+        for (int level = 1; level < levels; level++) {
+            int srcWidth = mipmapWidths[level - 1];
+            int srcHeight = mipmapHeights[level - 1];
+            int srcOffset = mipmapOffsets[level - 1];
+
+            int dstWidth = mipmapWidths[level];
+            int dstHeight = mipmapHeights[level];
+            int dstOffset = mipmapOffsets[level];
+
+            for (int dy = 0; dy < dstHeight; dy++) {
+                int sy0 = dy * 2;
+                int sy1 = Math.min(sy0 + 1, srcHeight - 1);
+                for (int dx = 0; dx < dstWidth; dx++) {
+                    int sx0 = dx * 2;
+                    int sx1 = Math.min(sx0 + 1, srcWidth - 1);
+
+                    int p00 = mipmapData[srcOffset + sy0 * srcWidth + sx0];
+                    int p01 = mipmapData[srcOffset + sy0 * srcWidth + sx1];
+                    int p10 = mipmapData[srcOffset + sy1 * srcWidth + sx0];
+                    int p11 = mipmapData[srcOffset + sy1 * srcWidth + sx1];
+
+                    // Average colors
+                    int r = (((p00 >> 16) & 0xFF) + ((p01 >> 16) & 0xFF) + ((p10 >> 16) & 0xFF) + ((p11 >> 16) & 0xFF)) / 4;
+                    int g = (((p00 >> 8) & 0xFF) + ((p01 >> 8) & 0xFF) + ((p10 >> 8) & 0xFF) + ((p11 >> 8) & 0xFF)) / 4;
+                    int b = ((p00 & 0xFF) + (p01 & 0xFF) + (p10 & 0xFF) + (p11 & 0xFF)) / 4;
+
+                    mipmapData[dstOffset + dy * dstWidth + dx] = (r << 16) | (g << 8) | b;
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------

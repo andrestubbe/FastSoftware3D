@@ -480,3 +480,275 @@ JNIEXPORT jintArray JNICALL Java_fastsoftware3d_terminal_FastTerminal_getCursorP
     env->SetIntArrayRegion(result, 0, 2, pos);
     return result;
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// Native Rendering Helpers
+// ════════════════════════════════════════════════════════════════════════
+
+static inline int writeAscii(jbyte* buf, int offset, const char* str) {
+    int i = 0;
+    while (str[i] != '\0') {
+        buf[offset + i] = (jbyte)str[i];
+        i++;
+    }
+    return i;
+}
+
+static inline int writeInt(jbyte* buf, int offset, int value) {
+    if (value == 0) {
+        buf[offset] = '0';
+        return 1;
+    }
+    char temp[12];
+    int len = 0;
+    int v = value;
+    while (v > 0) {
+        temp[len++] = '0' + (v % 10);
+        v /= 10;
+    }
+    for (int i = 0; i < len; i++) {
+        buf[offset + i] = temp[len - 1 - i];
+    }
+    return len;
+}
+
+static inline int writeUtf8(jbyte* buf, int offset, int codepoint) {
+    if (codepoint <= 0x7F) {
+        buf[offset] = (jbyte)codepoint;
+        return 1;
+    } else if (codepoint <= 0x7FF) {
+        buf[offset] = (jbyte)(0xC0 | (codepoint >> 6));
+        buf[offset + 1] = (jbyte)(0x80 | (codepoint & 0x3F));
+        return 2;
+    } else if (codepoint <= 0xFFFF) {
+        buf[offset] = (jbyte)(0xE0 | (codepoint >> 12));
+        buf[offset + 1] = (jbyte)(0x80 | ((codepoint >> 6) & 0x3F));
+        buf[offset + 2] = (jbyte)(0x80 | (codepoint & 0x3F));
+        return 3;
+    } else {
+        buf[offset] = (jbyte)(0xF0 | (codepoint >> 18));
+        buf[offset + 1] = (jbyte)(0x80 | ((codepoint >> 12) & 0x3F));
+        buf[offset + 2] = (jbyte)(0x80 | ((codepoint >> 6) & 0x3F));
+        buf[offset + 3] = (jbyte)(0x80 | (codepoint & 0x3F));
+        return 4;
+    }
+}
+
+static inline int emitFg(jbyte* buf, int offset, int fg) {
+    if (fg == -1) {
+        return writeAscii(buf, offset, "\033[39m");
+    }
+    int start = offset;
+    offset += writeAscii(buf, offset, "\033[38;2;");
+    offset += writeInt(buf, offset, (fg >> 16) & 0xFF);
+    buf[offset++] = ';';
+    offset += writeInt(buf, offset, (fg >> 8) & 0xFF);
+    buf[offset++] = ';';
+    offset += writeInt(buf, offset, fg & 0xFF);
+    buf[offset++] = 'm';
+    return offset - start;
+}
+
+static inline int emitBg(jbyte* buf, int offset, int bg) {
+    if (bg == -1) {
+        return writeAscii(buf, offset, "\033[49m");
+    }
+    int start = offset;
+    offset += writeAscii(buf, offset, "\033[48;2;");
+    offset += writeInt(buf, offset, (bg >> 16) & 0xFF);
+    buf[offset++] = ';';
+    offset += writeInt(buf, offset, (bg >> 8) & 0xFF);
+    buf[offset++] = ';';
+    offset += writeInt(buf, offset, bg & 0xFF);
+    buf[offset++] = 'm';
+    return offset - start;
+}
+
+static inline int moveCursor(jbyte* buf, int offset, int row, int col) {
+    int start = offset;
+    offset += writeAscii(buf, offset, "\033[");
+    offset += writeInt(buf, offset, row + 1);
+    buf[offset++] = ';';
+    offset += writeInt(buf, offset, col + 1);
+    buf[offset++] = 'H';
+    return offset - start;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// JNI: renderAnsiNative
+// ════════════════════════════════════════════════════════════════════════
+
+JNIEXPORT jint JNICALL Java_fastsoftware3d_terminal_FastTerminalRenderer_renderAnsiNative(
+    JNIEnv* env, jclass clazz,
+    jintArray compositeCPArray, jintArray compositeFgArray, jintArray compositeBgArray,
+    jintArray prevCPArray, jintArray prevFgArray, jintArray prevBgArray,
+    jbyteArray outBufferArray, jint width, jint height,
+    jboolean forceFullRedraw, jboolean diffRenderingEnabled, jboolean dirtyRectanglesEnabled
+) {
+    jint* compositeCodepoints = (jint*)env->GetPrimitiveArrayCritical(compositeCPArray, nullptr);
+    jint* compositeFg         = (jint*)env->GetPrimitiveArrayCritical(compositeFgArray, nullptr);
+    jint* compositeBg         = (jint*)env->GetPrimitiveArrayCritical(compositeBgArray, nullptr);
+    jint* prevCodepoints      = (jint*)env->GetPrimitiveArrayCritical(prevCPArray, nullptr);
+    jint* prevFg              = (jint*)env->GetPrimitiveArrayCritical(prevFgArray, nullptr);
+    jint* prevBg              = (jint*)env->GetPrimitiveArrayCritical(prevBgArray, nullptr);
+    jbyte* outBuffer          = (jbyte*)env->GetPrimitiveArrayCritical(outBufferArray, nullptr);
+
+    int outLen = 0;
+
+    if (compositeCodepoints && compositeFg && compositeBg && prevCodepoints && prevFg && prevBg && outBuffer) {
+        int cells = width * height;
+        if (dirtyRectanglesEnabled && diffRenderingEnabled && !forceFullRedraw) {
+            int minX = width;
+            int maxX = -1;
+            int minY = height;
+            int maxY = -1;
+
+            for (int i = 0; i < cells; i++) {
+                if (compositeCodepoints[i] != prevCodepoints[i] ||
+                    compositeFg[i] != prevFg[i] ||
+                    compositeBg[i] != prevBg[i]) {
+                    int y = i / width;
+                    int x = i - y * width;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            if (maxX != -1) {
+                int curFg = -2, curBg = -2;
+                for (int row = minY; row <= maxY; row++) {
+                    outLen += moveCursor(outBuffer, outLen, row, minX);
+                    curFg = -2; curBg = -2;
+                    int base = row * width;
+                    for (int col = minX; col <= maxX; col++) {
+                        int i  = base + col;
+                        int cp = compositeCodepoints[i];
+                        if (cp == -99) continue;
+                        int fg = compositeFg[i];
+                        int bg = compositeBg[i];
+                        if (fg != curFg) { outLen += emitFg(outBuffer, outLen, fg); curFg = fg; }
+                        if (bg != curBg) { outLen += emitBg(outBuffer, outLen, bg); curBg = bg; }
+                        if (cp >= 0 && cp <= 0x10FFFF) {
+                            outLen += writeUtf8(outBuffer, outLen, cp);
+                        } else {
+                            outBuffer[outLen++] = ' ';
+                        }
+                    }
+                }
+                outLen += writeAscii(outBuffer, outLen, "\033[0m");
+
+                // Sync only the dirty region
+                for (int row = minY; row <= maxY; row++) {
+                    int offset = row * width + minX;
+                    int len    = maxX - minX + 1;
+                    for (int c = 0; c < len; c++) {
+                        prevCodepoints[offset + c] = compositeCodepoints[offset + c];
+                        prevFg[offset + c]         = compositeFg[offset + c];
+                        prevBg[offset + c]         = compositeBg[offset + c];
+                    }
+                }
+            }
+        } else {
+            if (!diffRenderingEnabled || forceFullRedraw) {
+                outLen += writeAscii(outBuffer, outLen, "\033[H");
+                int curFg = -2, curBg = -2;
+
+                for (int i = 0; i < cells; i++) {
+                    int cp = compositeCodepoints[i];
+                    if (cp != -99) {
+                        int fg = compositeFg[i];
+                        int bg = compositeBg[i];
+                        if (fg != curFg) { outLen += emitFg(outBuffer, outLen, fg); curFg = fg; }
+                        if (bg != curBg) { outLen += emitBg(outBuffer, outLen, bg); curBg = bg; }
+                        if (cp >= 0 && cp <= 0x10FFFF) {
+                            outLen += writeUtf8(outBuffer, outLen, cp);
+                        } else {
+                            outBuffer[outLen++] = ' ';
+                        }
+                    }
+                    if ((i + 1) % width == 0 && (i + 1) < cells) {
+                        outLen += writeAscii(outBuffer, outLen, "\033[0m");
+                        outBuffer[outLen++] = '\n';
+                        curFg = -2; curBg = -2;
+                    }
+                }
+                outLen += writeAscii(outBuffer, outLen, "\033[0m");
+            } else {
+                int curFg = -2, curBg = -2;
+                int expectedPos = -1;
+
+                for (int i = 0; i < cells; i++) {
+                    int cp = compositeCodepoints[i];
+                    int fg = compositeFg[i];
+                    int bg = compositeBg[i];
+
+                    if (cp == prevCodepoints[i] && fg == prevFg[i] && bg == prevBg[i]) continue;
+
+                    if (cp == -99) {
+                        expectedPos = ((i + 1) % width == 0) ? -1 : i + 1;
+                        continue;
+                    }
+
+                    if (i != expectedPos) {
+                        int gap = i - expectedPos;
+                        if (expectedPos >= 0 && gap > 0 && gap <= 4
+                                && (i / width) == ((expectedPos - 1) / width)) {
+                            for (int g = expectedPos; g < i; g++) {
+                                int gcp = compositeCodepoints[g];
+                                if (gcp == -99) continue;
+                                int gfg = compositeFg[g];
+                                int gbg = compositeBg[g];
+                                if (gfg != curFg) { outLen += emitFg(outBuffer, outLen, gfg); curFg = gfg; }
+                                if (gbg != curBg) { outLen += emitBg(outBuffer, outLen, gbg); curBg = gbg; }
+                                if (gcp >= 0 && gcp <= 0x10FFFF) {
+                                    outLen += writeUtf8(outBuffer, outLen, gcp);
+                                } else {
+                                    outBuffer[outLen++] = ' ';
+                                }
+                            }
+                        } else {
+                            outLen += moveCursor(outBuffer, outLen, i / width, i % width);
+                        }
+                    }
+
+                    if (fg != curFg) { outLen += emitFg(outBuffer, outLen, fg); curFg = fg; }
+                    if (bg != curBg) { outLen += emitBg(outBuffer, outLen, bg); curBg = bg; }
+                    if (cp >= 0 && cp <= 0x10FFFF) {
+                        outLen += writeUtf8(outBuffer, outLen, cp);
+                    } else {
+                        outBuffer[outLen++] = ' ';
+                    }
+
+                    expectedPos = ((i + 1) % width == 0) ? -1 : i + 1;
+                }
+                outLen += writeAscii(outBuffer, outLen, "\033[0m");
+            }
+
+            for (int i = 0; i < cells; i++) {
+                prevCodepoints[i] = compositeCodepoints[i];
+                prevFg[i]         = compositeFg[i];
+                prevBg[i]         = compositeBg[i];
+            }
+        }
+    }
+
+    if (outBuffer) env->ReleasePrimitiveArrayCritical(outBufferArray, outBuffer, 0);
+    if (prevBg) env->ReleasePrimitiveArrayCritical(prevBgArray, prevBg, 0);
+    if (prevFg) env->ReleasePrimitiveArrayCritical(prevFgArray, prevFg, 0);
+    if (prevCodepoints) env->ReleasePrimitiveArrayCritical(prevCPArray, prevCodepoints, 0);
+    if (compositeBg) env->ReleasePrimitiveArrayCritical(compositeBgArray, compositeBg, JNI_ABORT);
+    if (compositeFg) env->ReleasePrimitiveArrayCritical(compositeFgArray, compositeFg, JNI_ABORT);
+    if (compositeCodepoints) env->ReleasePrimitiveArrayCritical(compositeCPArray, compositeCodepoints, JNI_ABORT);
+
+    return outLen;
+}
+
+JNIEXPORT void JNICALL Java_fastsoftware3d_terminal_FastTerminal_setTitle(JNIEnv* env, jclass clazz, jstring titleStr) {
+    const char* title = env->GetStringUTFChars(titleStr, nullptr);
+    if (title != nullptr) {
+        SetConsoleTitleA(title);
+        env->ReleaseStringUTFChars(titleStr, title);
+    }
+}

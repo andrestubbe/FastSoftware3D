@@ -56,6 +56,23 @@ public final class FastTerminalRenderer {
     private byte[] outBuffer;
     private int outLen;
 
+    private static boolean nativeAvailable = true;
+
+    static {
+        try {
+            fastcore.FastCore.loadLibrary("fastsoftware3d");
+        } catch (Throwable t) {
+            nativeAvailable = false;
+        }
+    }
+
+    private static native int renderAnsiNative(
+            int[] compositeCodepoints, int[] compositeFg, int[] compositeBg,
+            int[] prevCodepoints, int[] prevFg, int[] prevBg,
+            byte[] outBuffer, int width, int height,
+            boolean forceFullRedraw, boolean diffRenderingEnabled, boolean dirtyRectanglesEnabled
+    );
+
     // ════════════════════════════════════════════════════════════════════════
     // Construction / lifecycle
     // ════════════════════════════════════════════════════════════════════════
@@ -97,6 +114,22 @@ public final class FastTerminalRenderer {
         clear();
         compositeScenes();
         outLen = 0;
+
+        if (nativeAvailable) {
+            try {
+                outLen = renderAnsiNative(
+                        compositeCodepoints, compositeFg, compositeBg,
+                        prevCodepoints, prevFg, prevBg,
+                        outBuffer, width, height,
+                        forceFullRedraw, diffRenderingEnabled, dirtyRectanglesEnabled
+                );
+                forceFullRedraw = false;
+                flushOutput();
+                return;
+            } catch (UnsatisfiedLinkError e) {
+                nativeAvailable = false;
+            }
+        }
 
         if (dirtyRectanglesEnabled && diffRenderingEnabled && !forceFullRedraw) {
             if (renderDirtyRectangles()) {

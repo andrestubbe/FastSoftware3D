@@ -116,6 +116,13 @@ public class FastTerminal {
     public static native int[] getCursorPosition();
 
     /**
+     * @brief Sets the console window title.
+     * 
+     * @param title The new window title.
+     */
+    public static native void setTitle(String title);
+
+    /**
      * @brief Captures the current visible console screen buffer as a FastTerminalScene.
      *
      * @param defaultCols Standard fallback column width.

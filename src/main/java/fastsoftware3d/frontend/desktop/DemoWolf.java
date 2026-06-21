@@ -256,23 +256,6 @@ public class DemoWolf extends Canvas {
                 Graphics g = bs.getDrawGraphics();
                 g.drawImage(buffers.screenBuffer, 0, 0, null);
 
-                // Draw FPS in upper right corner (orange on lime-green background)
-                String fpsStr = "FPS: " + currentFps;
-                g.setFont(new java.awt.Font("Monospaced", java.awt.Font.BOLD, 16));
-                java.awt.FontMetrics fm = g.getFontMetrics();
-                int textWidth = fm.stringWidth(fpsStr);
-                int textHeight = fm.getHeight();
-                int rectWidth = textWidth + 12;
-                int rectHeight = textHeight + 6;
-                int rectX = getWidth() - rectWidth - 10;
-                int rectY = 10;
-
-                g.setColor(new java.awt.Color(50, 205, 50)); // LimeGreen
-                g.fillRect(rectX, rectY, rectWidth, rectHeight);
-
-                g.setColor(new java.awt.Color(255, 140, 0)); // Dark Orange
-                g.drawString(fpsStr, rectX + 6, rectY + textHeight - 2);
-
                 g.dispose();
                 bs.show();
 
@@ -281,6 +264,15 @@ public class DemoWolf extends Canvas {
                     lastFpsTime = System.nanoTime();
                     currentFps = frames;
                     frames = 0;
+
+                    int mode = fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode;
+                    String modeStr = "None";
+                    if (mode == 1) modeStr = "Tweaked Discrete";
+                    else if (mode == 2) modeStr = "Dithered";
+                    else if (mode == 3) modeStr = "Bilinear Level Blend";
+
+                    String title = "FastSoftware3D - Wolfenstein Desktop Demo | FPS: " + currentFps + " | SSAA: " + controller.ssaaFactor + "x | Mipmap Mode: " + modeStr;
+                    parentFrame.setTitle(title);
                 }
             }
         }).start();
