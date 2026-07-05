@@ -2,6 +2,7 @@ package fastsoftware3d.animation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
 
 /**
  * FastAnimation Engine - The high-precision heartbeat orchestrator.
@@ -81,7 +82,7 @@ public final class AnimationEngine {
             synchronized(toRemove) {
                 if (!toRemove.isEmpty()) {
                     if (toRemove.size() > 20) {
-                        animations.removeAll(new java.util.HashSet<>(toRemove)); // O(N) removal
+                        animations.removeAll(new HashSet<>(toRemove)); // O(N) removal
                     } else {
                         animations.removeAll(toRemove);
                     }

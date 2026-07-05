@@ -7,6 +7,12 @@ import fastsoftware3d.camera.Camera;
  */
 public final class ProjectionStage {
 
+    private float focalLength;
+
+    public void prepare(Camera cam, int width) {
+        focalLength = (float) (width / 2.0f / Math.tan(Math.toRadians(cam.fov / 2.0f)));
+    }
+
     /**
      * Project a camera-space point into screen-space.
      *
@@ -36,7 +42,6 @@ public final class ProjectionStage {
     public boolean projectZeroAlloc(float cx, float cy, float cz, Camera cam, int width, int height, float[] dest, int destOff) {
         if (cz < 2.0f) return false;
 
-        float focalLength = (float) (width / 2.0f / Math.tan(Math.toRadians(cam.fov / 2.0f)));
         float scale = focalLength / cz;
 
         dest[destOff]     = width  / 2.0f + cx * scale;

@@ -59,7 +59,7 @@ public final class NativeRasterizer implements TriangleRasterizer {
                     x2, y2, z2, u2, v2,
                     material, fb);
         }
-     }
+    }
 
     @Override
     public void drawTriangles(

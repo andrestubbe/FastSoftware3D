@@ -10,9 +10,12 @@ import java.util.List;
 public class ObjLoader {
 
     public static class ModelData {
-        public List<float[]> vertices = new ArrayList<>();
-        public List<float[]> uvs = new ArrayList<>();
-        public List<Face> faces = new ArrayList<>();
+        public float[] vertices;
+        public float[] uvs;
+        public int[] vIndices;
+        public int[] uvIndices;
+        public int vertexCount;
+        public int faceCount;
         public float boundingRadius = 0.0f;
     }
 
@@ -40,6 +43,10 @@ public class ObjLoader {
     }
 
     private static void parse(BufferedReader reader, ModelData model) throws Exception {
+        List<float[]> tempVertices = new ArrayList<>();
+        List<float[]> tempUvs = new ArrayList<>();
+        List<Face> tempFaces = new ArrayList<>();
+
         String line;
         while ((line = reader.readLine()) != null) {
             line = line.trim();
@@ -56,7 +63,7 @@ public class ObjLoader {
                         float x = Float.parseFloat(tokens[1]);
                         float y = Float.parseFloat(tokens[2]);
                         float z = Float.parseFloat(tokens[3]);
-                        model.vertices.add(new float[]{x, y, z});
+                        tempVertices.add(new float[]{x, y, z});
                     }
                     break;
 
@@ -64,7 +71,7 @@ public class ObjLoader {
                     if (tokens.length >= 3) {
                         float u = Float.parseFloat(tokens[1]);
                         float v = Float.parseFloat(tokens[2]);
-                        model.uvs.add(new float[]{u, v});
+                        tempUvs.add(new float[]{u, v});
                     }
                     break;
 
@@ -79,11 +86,10 @@ public class ObjLoader {
                             
                             // Parse vertex index
                             int vIdx = Integer.parseInt(parts[0]);
-                            // Resolve 1-based index (and negative index if any)
                             if (vIdx > 0) {
                                 vIndices[i] = vIdx - 1;
                             } else {
-                                vIndices[i] = model.vertices.size() + vIdx;
+                                vIndices[i] = tempVertices.size() + vIdx;
                             }
 
                             // Parse UV index if present
@@ -92,29 +98,66 @@ public class ObjLoader {
                                 if (uvIdx > 0) {
                                     uvIndices[i] = uvIdx - 1;
                                 } else {
-                                    uvIndices[i] = model.uvs.size() + uvIdx;
+                                    uvIndices[i] = tempUvs.size() + uvIdx;
                                 }
                             } else {
                                 uvIndices[i] = -1;
                             }
                         }
 
-                        // Support polygon triangulation (fan triangulation) for quads and higher polygons
                         for (int i = 1; i < count - 1; i++) {
                             Face face = new Face();
                             face.vIndices = new int[]{vIndices[0], vIndices[i], vIndices[i + 1]};
                             face.uvIndices = new int[]{uvIndices[0], uvIndices[i], uvIndices[i + 1]};
-                            model.faces.add(face);
+                            tempFaces.add(face);
                         }
                     }
                     break;
             }
         }
 
-        // Calculate bounding radius for model-level frustum culling
+        // Flatten into primitive arrays
+        model.vertexCount = tempVertices.size();
+        model.vertices = new float[model.vertexCount * 3];
+        for (int i = 0; i < model.vertexCount; i++) {
+            float[] v = tempVertices.get(i);
+            int off = i * 3;
+            model.vertices[off] = v[0];
+            model.vertices[off + 1] = v[1];
+            model.vertices[off + 2] = v[2];
+        }
+
+        int uvCount = tempUvs.size();
+        model.uvs = new float[uvCount * 2];
+        for (int i = 0; i < uvCount; i++) {
+            float[] uv = tempUvs.get(i);
+            int off = i * 2;
+            model.uvs[off] = uv[0];
+            model.uvs[off + 1] = uv[1];
+        }
+
+        model.faceCount = tempFaces.size();
+        model.vIndices = new int[model.faceCount * 3];
+        model.uvIndices = new int[model.faceCount * 3];
+        for (int i = 0; i < model.faceCount; i++) {
+            Face f = tempFaces.get(i);
+            int off = i * 3;
+            model.vIndices[off] = f.vIndices[0];
+            model.vIndices[off + 1] = f.vIndices[1];
+            model.vIndices[off + 2] = f.vIndices[2];
+            model.uvIndices[off] = f.uvIndices[0];
+            model.uvIndices[off + 1] = f.uvIndices[1];
+            model.uvIndices[off + 2] = f.uvIndices[2];
+        }
+
+        // Calculate bounding radius
         float maxDistSq = 0.0f;
-        for (float[] v : model.vertices) {
-            float distSq = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+        for (int i = 0; i < model.vertexCount; i++) {
+            int off = i * 3;
+            float vx = model.vertices[off];
+            float vy = model.vertices[off + 1];
+            float vz = model.vertices[off + 2];
+            float distSq = vx*vx + vy*vy + vz*vz;
             if (distSq > maxDistSq) {
                 maxDistSq = distSq;
             }

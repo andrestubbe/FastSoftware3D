@@ -24,6 +24,10 @@ public final class Renderer3D {
         pipeline.clear();
     }
 
+    public void flush() {
+        pipeline.flush();
+    }
+
     // Coordinate helpers (used by SceneUtilities)
 
     public float[] transformToCamera(float wx, float wy, float wz) {
@@ -36,8 +40,8 @@ public final class Renderer3D {
 
     // Rendering
 
-    public void renderModel(ObjLoader.ModelData model, float x, float y, float z, float rotationY, Material material) {
-        pipeline.renderModel(model, x, y, z, rotationY, material);
+    public void renderModel(ObjLoader.ModelData model, float x, float y, float z, float rotationX, float rotationY, float rotationZ, Material material) {
+        pipeline.renderModel(model, x, y, z, rotationX, rotationY, rotationZ, material);
     }
 
     // Accessors

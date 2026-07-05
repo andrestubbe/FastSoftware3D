@@ -11,6 +11,8 @@ public class Scene {
         }
     };
 
+    private static final Transform IDENTITY = new Transform();
+
     public SceneNode getRoot() {
         return root;
     }
@@ -20,7 +22,6 @@ public class Scene {
     }
 
     public void render(Renderer3D renderer, Graphics2D g) {
-        // System.out.println("Scene.render() called");
-        root.render(renderer, new Transform(), g);
+        root.render(renderer, IDENTITY, g);
     }
 }

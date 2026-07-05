@@ -46,7 +46,7 @@ public class OverlayRenderer {
         y += lineHeight;
 
         // Line 4: FOV
-        g.drawString(String.format("FOV: %.1f°", controller.baseFov), padding, y);
+        g.drawString(String.format("FOV: %.1f°", controller.getBaseFov()), padding, y);
         y += lineHeight;
 
         // Line 5: Resolution mode
@@ -55,7 +55,7 @@ public class OverlayRenderer {
         y += lineHeight;
 
         // Line 6: Anti-Aliasing
-        g.drawString(String.format("Anti-Aliasing: %s (Press 'O' to Toggle)", controller.ssaaFactor == 1 ? "None (1x)" : (controller.ssaaFactor + "x SSAA")), padding, y);
+        g.drawString(String.format("Anti-Aliasing: %s (Press 'O' to Toggle)", controller.getSsaaFactor() == 1 ? "None (1x)" : (controller.getSsaaFactor() + "x SSAA")), padding, y);
         y += lineHeight;
 
         // Line 7: Controls hint

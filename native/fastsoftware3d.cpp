@@ -4,13 +4,133 @@
 #include <vector>
 #include <thread>
 #include <immintrin.h>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <functional>
 #include "fastsoftware3d_rasterizer_NativeRasterizer.h"
 #include "fastsoftware3d_frontend_terminal_Demo3DTerminal.h"
+
+// -----------------------------------------------------------------------------
+// GLOBAL THREAD POOL FOR RASTERIZATION
+// -----------------------------------------------------------------------------
+class ThreadPool {
+public:
+    static ThreadPool& getInstance() {
+        static ThreadPool instance;
+        return instance;
+    }
+
+    ThreadPool() : running(true) {
+        int numThreads = std::max(1, (int)std::thread::hardware_concurrency());
+        for (int i = 0; i < numThreads; ++i) {
+            workers.emplace_back([this] {
+                while (true) {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(queue_mutex);
+                        condition.wait(lock, [this] { return !running || !tasks.empty(); });
+                        if (!running && tasks.empty()) return;
+                        task = std::move(tasks.front());
+                        tasks.pop();
+                    }
+                    task();
+                }
+            });
+        }
+    }
+
+    ~ThreadPool() {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            running = false;
+        }
+        condition.notify_all();
+        for (std::thread &worker : workers) worker.join();
+    }
+
+    void enqueueAndAwait(int numTasks, const std::function<void(int)>& taskFunc) {
+        std::atomic<int> completed{0};
+        std::mutex done_mutex;
+        std::condition_variable done_cv;
+
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            for (int i = 0; i < numTasks; ++i) {
+                tasks.emplace([&completed, &done_mutex, &done_cv, numTasks, i, taskFunc] {
+                    taskFunc(i);
+                    if (++completed == numTasks) {
+                        std::lock_guard<std::mutex> done_lock(done_mutex);
+                        done_cv.notify_one();
+                    }
+                });
+            }
+        }
+        condition.notify_all();
+
+        std::unique_lock<std::mutex> done_lock(done_mutex);
+        done_cv.wait(done_lock, [&] { return completed == numTasks; });
+    }
+
+    int getThreadCount() const {
+        return workers.size();
+    }
+
+private:
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queue_mutex;
+    std::condition_variable condition;
+    bool running;
+};
 
 // -------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------
 static const int TEX_SIZE = 256;
+
+static inline int sampleTextureBilinear(float u, float v, int* mipmapData, int offset, int texW, int texH) {
+    float fu = u * (texW - 1);
+    float fv = v * (texH - 1);
+
+    int x0 = (int)fu;
+    int y0 = (int)fv;
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+
+    if (x1 >= texW) x1 = texW - 1;
+    if (y1 >= texH) y1 = texH - 1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+
+    float weightX = fu - x0;
+    float weightY = fv - y0;
+
+    int c00 = mipmapData[offset + y0 * texW + x0];
+    int c10 = mipmapData[offset + y0 * texW + x1];
+    int c01 = mipmapData[offset + y1 * texW + x0];
+    int c11 = mipmapData[offset + y1 * texW + x1];
+
+    int r00 = (c00 >> 16) & 0xFF; int g00 = (c00 >> 8) & 0xFF; int b00 = c00 & 0xFF;
+    int r10 = (c10 >> 16) & 0xFF; int g10 = (c10 >> 8) & 0xFF; int b10 = c10 & 0xFF;
+    int r01 = (c01 >> 16) & 0xFF; int g01 = (c01 >> 8) & 0xFF; int b01 = c01 & 0xFF;
+    int r11 = (c11 >> 16) & 0xFF; int g11 = (c11 >> 8) & 0xFF; int b11 = c11 & 0xFF;
+
+    float rTop = r00 + (r10 - r00) * weightX;
+    float gTop = g00 + (g10 - g00) * weightX;
+    float bTop = b00 + (b10 - b00) * weightX;
+
+    float rBot = r01 + (r11 - r01) * weightX;
+    float gBot = g01 + (g11 - g01) * weightX;
+    float bBot = b01 + (b11 - b01) * weightX;
+
+    int r = (int)(rTop + (rBot - rTop) * weightY);
+    int g = (int)(gTop + (gBot - gTop) * weightY);
+    int b = (int)(bTop + (bBot - bTop) * weightY);
+
+    return (r << 16) | (g << 8) | b;
+}
 
 static inline int sampleTexture(float depth, float u, float v,
                                 int* mipmapData, int* mipmapOffsets,
@@ -76,6 +196,54 @@ static inline int sampleTexture(float depth, float u, float v,
         return mipmapData[offset + texY * texW + texX];
     }
 
+    if (mipmapMode == 4) {
+        int mipLevel;
+        if (depth < 600.0f) mipLevel = 0;
+        else if (depth < 1200.0f) mipLevel = 1;
+        else if (depth < 2400.0f) mipLevel = 2;
+        else mipLevel = 3;
+        if (mipLevel >= mipmapLevels) mipLevel = mipmapLevels - 1;
+        if (mipLevel < 0) mipLevel = 0;
+
+        int texW = mipmapWidths[mipLevel];
+        int texH = mipmapHeights[mipLevel];
+        int offset = mipmapOffsets[mipLevel];
+        return sampleTextureBilinear(u, v, mipmapData, offset, texW, texH);
+    }
+
+    if (mipmapMode == 5) {
+        float L;
+        if (depth < 400.0f) L = 0.0f;
+        else if (depth < 800.0f) L = (depth - 400.0f) / 400.0f;
+        else if (depth < 1400.0f) L = 1.0f + (depth - 800.0f) / 600.0f;
+        else L = 2.0f + (depth - 1400.0f) / 1000.0f;
+
+        int L_int = (int)L;
+        float L_frac = L - L_int;
+
+        int mipLevel0 = L_int;
+        int mipLevel1 = L_int + 1;
+        if (mipLevel0 >= mipmapLevels) mipLevel0 = mipmapLevels - 1;
+        if (mipLevel0 < 0) mipLevel0 = 0;
+        if (mipLevel1 >= mipmapLevels) mipLevel1 = mipmapLevels - 1;
+        if (mipLevel1 < 0) mipLevel1 = 0;
+
+        int color0 = sampleTextureBilinear(u, v, mipmapData, mipmapOffsets[mipLevel0], mipmapWidths[mipLevel0], mipmapHeights[mipLevel0]);
+        if (mipLevel0 == mipLevel1) return color0;
+
+        int color1 = sampleTextureBilinear(u, v, mipmapData, mipmapOffsets[mipLevel1], mipmapWidths[mipLevel1], mipmapHeights[mipLevel1]);
+
+        int r0 = (color0 >> 16) & 0xFF; int g0 = (color0 >> 8) & 0xFF; int b0 = color0 & 0xFF;
+        int r1 = (color1 >> 16) & 0xFF; int g1 = (color1 >> 8) & 0xFF; int b1 = color1 & 0xFF;
+
+        int r = r0 + (int)((r1 - r0) * L_frac);
+        int g = g0 + (int)((g1 - g0) * L_frac);
+        int b = b0 + (int)((b1 - b0) * L_frac);
+
+        return (r << 16) | (g << 8) | b;
+    }
+
+    // Default (mode 3) - Linear blend of nearest-neighbor mip levels
     float L;
     if (depth < 400.0f) {
         L = 0.0f;
@@ -177,23 +345,24 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
             float dAlpha = (y1 - y2) * invDenom;
             float dBeta  = (y2 - y0) * invDenom;
 
+            __m256 v_dAlpha = _mm256_set1_ps(dAlpha);
+            __m256 v_dBeta  = _mm256_set1_ps(dBeta);
+            __m256 v_w0     = _mm256_set1_ps(w0);
+            __m256 v_w1     = _mm256_set1_ps(w1);
+            __m256 v_w2     = _mm256_set1_ps(w2);
+            __m256 v_zero   = _mm256_setzero_ps();
+            __m256 v_one    = _mm256_set1_ps(1.0f);
+            __m256 v_steps  = _mm256_setr_ps(0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f);
+
+            __m256 v_dAlpha_steps = _mm256_mul_ps(v_dAlpha, v_steps);
+            __m256 v_dBeta_steps  = _mm256_mul_ps(v_dBeta, v_steps);
+
             // Direct scanline rasterization loop
             for (int y = minY; y <= maxY; y++) {
                 int rowOffset = y * width;
                 float py = y + 0.5f;
 
                 int x = minX;
-                __m256 v_dAlpha = _mm256_set1_ps(dAlpha);
-                __m256 v_dBeta  = _mm256_set1_ps(dBeta);
-                __m256 v_w0     = _mm256_set1_ps(w0);
-                __m256 v_w1     = _mm256_set1_ps(w1);
-                __m256 v_w2     = _mm256_set1_ps(w2);
-                __m256 v_zero   = _mm256_setzero_ps();
-                __m256 v_one    = _mm256_set1_ps(1.0f);
-                __m256 v_steps  = _mm256_setr_ps(0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f);
-
-                __m256 v_dAlpha_steps = _mm256_mul_ps(v_dAlpha, v_steps);
-                __m256 v_dBeta_steps  = _mm256_mul_ps(v_dBeta, v_steps);
 
                 for (; x <= maxX - 7; x += 8) {
                     float px_base = x + 0.5f;
@@ -251,8 +420,8 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
                             float u = interpUOverZ / interpW_arr[j];
                             float v = interpVOverZ / interpW_arr[j];
 
-                            u = u - std::floor(u);
-                            v = v - std::floor(v);
+                            u = std::max(0.0f, std::min(1.0f, u));
+                            v = std::max(0.0f, std::min(1.0f, v));
 
                             int texColor = sampleTexture(d, u, v, mipmapData, mipmapOffsets, mipmapWidths, mipmapHeights, mipmapLevels, mipmapMode, x + j, y);
 
@@ -283,8 +452,8 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
                             float u = interpUOverZ / interpolatedW;
                             float v = interpVOverZ / interpolatedW;
 
-                            u = u - std::floor(u);
-                            v = v - std::floor(v);
+                            u = std::max(0.0f, std::min(1.0f, u));
+                            v = std::max(0.0f, std::min(1.0f, v));
 
                             int texColor = sampleTexture(depth, u, v, mipmapData, mipmapOffsets, mipmapWidths, mipmapHeights, mipmapLevels, mipmapMode, x, y);
 
@@ -324,53 +493,68 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
     jint* mipmapHeights = (jint*)env->GetPrimitiveArrayCritical(mipmapHeightsArray, nullptr);
 
     if (triangleData && pixels && zBuffer && mipmapData && mipmapOffsets && mipmapWidths && mipmapHeights) {
-        for (int i = 0; i < triangleCount; i++) {
-            int offset = i * 15;
-            float x0 = triangleData[offset];
-            float y0 = triangleData[offset + 1];
-            float z0 = triangleData[offset + 2];
-            float u0 = triangleData[offset + 3];
-            float v0 = triangleData[offset + 4];
+        int numThreads = ThreadPool::getInstance().getThreadCount();
+        int rowsPerThread = (height + numThreads - 1) / numThreads;
 
-            float x1 = triangleData[offset + 5];
-            float y1 = triangleData[offset + 6];
-            float z1 = triangleData[offset + 7];
-            float u1 = triangleData[offset + 8];
-            float v1 = triangleData[offset + 9];
+        ThreadPool::getInstance().enqueueAndAwait(numThreads, [=](int t) {
+            int startRow = t * rowsPerThread;
+            int endRow = std::min(startRow + rowsPerThread, (int)height);
+            if (startRow >= endRow) return;
 
-            float x2 = triangleData[offset + 10];
-            float y2 = triangleData[offset + 11];
-            float z2 = triangleData[offset + 12];
-            float u2 = triangleData[offset + 13];
-            float v2 = triangleData[offset + 14];
+            for (int i = 0; i < triangleCount; i++) {
+                int offset = i * 15;
+                float x0 = triangleData[offset];
+                float y0 = triangleData[offset + 1];
+                float z0 = triangleData[offset + 2];
+                float u0 = triangleData[offset + 3];
+                float v0 = triangleData[offset + 4];
 
-            float w0 = 1.0f / z0;
-            float w1 = 1.0f / z1;
-            float w2 = 1.0f / z2;
+                float x1 = triangleData[offset + 5];
+                float y1 = triangleData[offset + 6];
+                float z1 = triangleData[offset + 7];
+                float u1 = triangleData[offset + 8];
+                float v1 = triangleData[offset + 9];
 
-            float uOverZ0 = u0 * w0;
-            float vOverZ0 = v0 * w0;
-            float uOverZ1 = u1 * w1;
-            float vOverZ1 = v1 * w1;
-            float uOverZ2 = u2 * w2;
-            float vOverZ2 = v2 * w2;
+                float x2 = triangleData[offset + 10];
+                float y2 = triangleData[offset + 11];
+                float z2 = triangleData[offset + 12];
+                float u2 = triangleData[offset + 13];
+                float v2 = triangleData[offset + 14];
 
-            int minX = (int)std::max(0.0f, std::floor(std::min({x0, x1, x2})));
-            int maxX = (int)std::min((float)(width - 1), std::ceil(std::max({x0, x1, x2})));
-            int minY = (int)std::max(0.0f, std::floor(std::min({y0, y1, y2})));
-            int maxY = (int)std::min((float)(height - 1), std::ceil(std::max({y0, y1, y2})));
-            float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
-            if (std::abs(denom) >= 0.000001f) {
-                float invDenom = 1.0f / denom;
+                float y_min_f = std::min(y0, std::min(y1, y2));
+                float y_max_f = std::max(y0, std::max(y1, y2));
 
-                float dAlpha = (y1 - y2) * invDenom;
-                float dBeta  = (y2 - y0) * invDenom;
+                if (y_min_f >= endRow || y_max_f < startRow) continue;
 
-                for (int y = minY; y <= maxY; y++) {
-                    int rowOffset = y * width;
-                    float py = y + 0.5f;
+                int globalMinY = (int)y_min_f;
+                int globalMaxY = (int)std::ceil(y_max_f);
+                    
+                int minY = std::max(startRow, std::max(0, globalMinY));
+                int maxY = std::min(endRow - 1, std::min(height - 1, globalMaxY));
 
-                    int x = minX;
+                if (minY > maxY) continue;
+
+                float w0 = 1.0f / z0;
+                float w1 = 1.0f / z1;
+                float w2 = 1.0f / z2;
+
+                float uOverZ0 = u0 * w0;
+                float vOverZ0 = v0 * w0;
+                float uOverZ1 = u1 * w1;
+                float vOverZ1 = v1 * w1;
+                float uOverZ2 = u2 * w2;
+                float vOverZ2 = v2 * w2;
+
+                int minX = (int)std::max(0.0f, std::floor(std::min({x0, x1, x2})));
+                int maxX = (int)std::min((float)(width - 1), std::ceil(std::max({x0, x1, x2})));
+                    
+                float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
+                if (std::abs(denom) >= 0.000001f) {
+                    float invDenom = 1.0f / denom;
+
+                    float dAlpha = (y1 - y2) * invDenom;
+                    float dBeta  = (y2 - y0) * invDenom;
+
                     __m256 v_dAlpha = _mm256_set1_ps(dAlpha);
                     __m256 v_dBeta  = _mm256_set1_ps(dBeta);
                     __m256 v_w0     = _mm256_set1_ps(w0);
@@ -383,106 +567,113 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_rasterizer_NativeRasterizer_drawTextu
                     __m256 v_dAlpha_steps = _mm256_mul_ps(v_dAlpha, v_steps);
                     __m256 v_dBeta_steps  = _mm256_mul_ps(v_dBeta, v_steps);
 
-                    for (; x <= maxX - 7; x += 8) {
-                        float px_base = x + 0.5f;
-                        float alpha_base = ((y1 - y2) * (px_base - x2) + (x2 - x1) * (py - y2)) * invDenom;
-                        float beta_base  = ((y2 - y0) * (px_base - x2) + (x0 - x2) * (py - y2)) * invDenom;
+                    for (int y = minY; y <= maxY; y++) {
+                        int rowOffset = y * width;
+                        float py = y + 0.5f;
 
-                        __m256 v_alpha = _mm256_add_ps(_mm256_set1_ps(alpha_base), v_dAlpha_steps);
-                        __m256 v_beta  = _mm256_add_ps(_mm256_set1_ps(beta_base), v_dBeta_steps);
-                        __m256 v_gamma = _mm256_sub_ps(_mm256_sub_ps(v_one, v_alpha), v_beta);
+                        int x = minX;
 
-                        __m256 m_alpha = _mm256_cmp_ps(v_alpha, v_zero, _CMP_GE_OQ);
-                        __m256 m_beta  = _mm256_cmp_ps(v_beta, v_zero, _CMP_GE_OQ);
-                        __m256 m_gamma = _mm256_cmp_ps(v_gamma, v_zero, _CMP_GE_OQ);
-                        __m256 m_inside = _mm256_and_ps(_mm256_and_ps(m_alpha, m_beta), m_gamma);
+                        for (; x <= maxX - 7; x += 8) {
+                            float px_base = x + 0.5f;
+                            float alpha_base = ((y1 - y2) * (px_base - x2) + (x2 - x1) * (py - y2)) * invDenom;
+                            float beta_base  = ((y2 - y0) * (px_base - x2) + (x0 - x2) * (py - y2)) * invDenom;
 
-                        int mask = _mm256_movemask_ps(m_inside);
-                        if (mask == 0) continue;
+                            __m256 v_alpha = _mm256_add_ps(_mm256_set1_ps(alpha_base), v_dAlpha_steps);
+                            __m256 v_beta  = _mm256_add_ps(_mm256_set1_ps(beta_base), v_dBeta_steps);
+                            __m256 v_gamma = _mm256_sub_ps(_mm256_sub_ps(v_one, v_alpha), v_beta);
 
-                        __m256 v_interpW = _mm256_add_ps(
-                            _mm256_mul_ps(v_alpha, v_w0),
-                            _mm256_add_ps(_mm256_mul_ps(v_beta, v_w1), _mm256_mul_ps(v_gamma, v_w2))
-                        );
+                            __m256 m_alpha = _mm256_cmp_ps(v_alpha, v_zero, _CMP_GE_OQ);
+                            __m256 m_beta  = _mm256_cmp_ps(v_beta, v_zero, _CMP_GE_OQ);
+                            __m256 m_gamma = _mm256_cmp_ps(v_gamma, v_zero, _CMP_GE_OQ);
+                            __m256 m_inside = _mm256_and_ps(_mm256_and_ps(m_alpha, m_beta), m_gamma);
 
-                        __m256 v_depth = _mm256_div_ps(v_one, v_interpW);
+                            int mask = _mm256_movemask_ps(m_inside);
+                            if (mask == 0) continue;
 
-                        int pixelIndex = rowOffset + x;
-                        __m256 v_zBuf = _mm256_loadu_ps(&zBuffer[pixelIndex]);
+                            __m256 v_interpW = _mm256_add_ps(
+                                _mm256_mul_ps(v_alpha, v_w0),
+                                _mm256_add_ps(_mm256_mul_ps(v_beta, v_w1), _mm256_mul_ps(v_gamma, v_w2))
+                            );
 
-                        __m256 m_depth = _mm256_cmp_ps(v_depth, v_zBuf, _CMP_LT_OQ);
-                        __m256 m_write = _mm256_and_ps(m_inside, m_depth);
-
-                        int writeMask = _mm256_movemask_ps(m_write);
-                        if (writeMask == 0) continue;
-
-                        float depth_arr[8];
-                        float alpha_arr[8];
-                        float beta_arr[8];
-                        float gamma_arr[8];
-                        float interpW_arr[8];
-                        _mm256_storeu_ps(depth_arr, v_depth);
-                        _mm256_storeu_ps(alpha_arr, v_alpha);
-                        _mm256_storeu_ps(beta_arr, v_beta);
-                        _mm256_storeu_ps(gamma_arr, v_gamma);
-                        _mm256_storeu_ps(interpW_arr, v_interpW);
-
-                        for (int j = 0; j < 8; j++) {
-                            if (writeMask & (1 << j)) {
-                                int idx = pixelIndex + j;
-                                float d = depth_arr[j];
-                                zBuffer[idx] = d;
-
-                                float interpUOverZ = alpha_arr[j] * uOverZ0 + beta_arr[j] * uOverZ1 + gamma_arr[j] * uOverZ2;
-                                float interpVOverZ = alpha_arr[j] * vOverZ0 + beta_arr[j] * vOverZ1 + gamma_arr[j] * vOverZ2;
-
-                                float u = interpUOverZ / interpW_arr[j];
-                                float v = interpVOverZ / interpW_arr[j];
-
-                                u = u - std::floor(u);
-                                v = v - std::floor(v);
-
-                                int texColor = sampleTexture(d, u, v, mipmapData, mipmapOffsets, mipmapWidths, mipmapHeights, mipmapLevels, mipmapMode, x + j, y);
-
-                                    pixels[idx] = texColor;
-                            }
-                        }
-                    }
-
-                    // Scalar cleanup
-                    for (; x <= maxX; x++) {
-                        float px = x + 0.5f;
-
-                        float alpha = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) * invDenom;
-                        float beta  = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) * invDenom;
-                        float gamma = 1.0f - alpha - beta;
-
-                        if (alpha >= 0.0f && beta >= 0.0f && gamma >= 0.0f) {
-                            float interpolatedW = alpha * w0 + beta * w1 + gamma * w2;
-                            float depth = 1.0f / interpolatedW;
+                            __m256 v_depth = _mm256_div_ps(v_one, v_interpW);
 
                             int pixelIndex = rowOffset + x;
-                            if (depth < zBuffer[pixelIndex]) {
-                                zBuffer[pixelIndex] = depth;
+                            __m256 v_zBuf = _mm256_loadu_ps(&zBuffer[pixelIndex]);
 
-                                float interpUOverZ = alpha * uOverZ0 + beta * uOverZ1 + gamma * uOverZ2;
-                                float interpVOverZ = alpha * vOverZ0 + beta * vOverZ1 + gamma * vOverZ2;
+                            __m256 m_depth = _mm256_cmp_ps(v_depth, v_zBuf, _CMP_LT_OQ);
+                            __m256 m_write = _mm256_and_ps(m_inside, m_depth);
 
-                                float u = interpUOverZ / interpolatedW;
-                                float v = interpVOverZ / interpolatedW;
+                            int writeMask = _mm256_movemask_ps(m_write);
+                            if (writeMask == 0) continue;
 
-                                u = u - std::floor(u);
-                                v = v - std::floor(v);
+                            float depth_arr[8];
+                            float alpha_arr[8];
+                            float beta_arr[8];
+                            float gamma_arr[8];
+                            float interpW_arr[8];
+                            _mm256_storeu_ps(depth_arr, v_depth);
+                            _mm256_storeu_ps(alpha_arr, v_alpha);
+                            _mm256_storeu_ps(beta_arr, v_beta);
+                            _mm256_storeu_ps(gamma_arr, v_gamma);
+                            _mm256_storeu_ps(interpW_arr, v_interpW);
 
-                                int texColor = sampleTexture(depth, u, v, mipmapData, mipmapOffsets, mipmapWidths, mipmapHeights, mipmapLevels, mipmapMode, x, y);
+                            for (int j = 0; j < 8; j++) {
+                                if (writeMask & (1 << j)) {
+                                    int idx = pixelIndex + j;
+                                    float d = depth_arr[j];
+                                    zBuffer[idx] = d;
+
+                                    float interpUOverZ = alpha_arr[j] * uOverZ0 + beta_arr[j] * uOverZ1 + gamma_arr[j] * uOverZ2;
+                                    float interpVOverZ = alpha_arr[j] * vOverZ0 + beta_arr[j] * vOverZ1 + gamma_arr[j] * vOverZ2;
+
+                                    float u = interpUOverZ / interpW_arr[j];
+                                    float v = interpVOverZ / interpW_arr[j];
+
+                                    u = std::max(0.0f, std::min(1.0f, u));
+                                    v = std::max(0.0f, std::min(1.0f, v));
+
+                                    int texColor = sampleTexture(d, u, v, mipmapData, mipmapOffsets, mipmapWidths, mipmapHeights, mipmapLevels, mipmapMode, x + j, y);
+
+                                    pixels[idx] = texColor;
+                                }
+                            }
+                        }
+
+                        // Scalar cleanup
+                        for (; x <= maxX; x++) {
+                            float px = x + 0.5f;
+
+                            float alpha = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) * invDenom;
+                            float beta  = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) * invDenom;
+                            float gamma = 1.0f - alpha - beta;
+
+                            if (alpha >= 0.0f && beta >= 0.0f && gamma >= 0.0f) {
+                                float interpolatedW = alpha * w0 + beta * w1 + gamma * w2;
+                                float depth = 1.0f / interpolatedW;
+
+                                int pixelIndex = rowOffset + x;
+                                if (depth < zBuffer[pixelIndex]) {
+                                    zBuffer[pixelIndex] = depth;
+
+                                    float interpUOverZ = alpha * uOverZ0 + beta * uOverZ1 + gamma * uOverZ2;
+                                    float interpVOverZ = alpha * vOverZ0 + beta * vOverZ1 + gamma * vOverZ2;
+
+                                    float u = interpUOverZ / interpolatedW;
+                                    float v = interpVOverZ / interpolatedW;
+
+                                    u = std::max(0.0f, std::min(1.0f, u));
+                                    v = std::max(0.0f, std::min(1.0f, v));
+
+                                    int texColor = sampleTexture(depth, u, v, mipmapData, mipmapOffsets, mipmapWidths, mipmapHeights, mipmapLevels, mipmapMode, x, y);
 
                                     pixels[pixelIndex] = texColor;
+                                }
                             }
                         }
                     }
                 }
             }
-        }
+        });
     }
 
     if (mipmapHeights) env->ReleasePrimitiveArrayCritical(mipmapHeightsArray, mipmapHeights, JNI_ABORT);
@@ -515,76 +706,64 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_frontend_terminal_Demo3DTerminal_down
         else if (ssaa == 8) shift = 6;  // 8x8 = 64 pixels, divide by 64 (shift 6)
         else if (ssaa == 16) shift = 8; // 16x16 = 256 pixels, divide by 256 (shift 8)
 
-        // Process rows in parallel using simple loop division
-        int numThreads = (int)std::thread::hardware_concurrency();
-        if (numThreads < 1) numThreads = 1;
-        
-        std::vector<std::thread> workers;
+        int numThreads = ThreadPool::getInstance().getThreadCount();
         int rowsPerThread = (rows + numThreads - 1) / numThreads;
 
-        for (int t = 0; t < numThreads; t++) {
+        ThreadPool::getInstance().enqueueAndAwait(numThreads, [=](int t) {
             int startRow = t * rowsPerThread;
             int endRow = std::min(startRow + rowsPerThread, (int)rows);
 
-            if (startRow >= endRow) break;
+            for (int row = startRow; row < endRow; row++) {
+                int startYTop = row * 2 * ssaa;
+                int startYBot = (row * 2 + 1) * ssaa;
+                int destRowOffset = row * cols;
 
-            workers.push_back(std::thread([=]() {
-                for (int row = startRow; row < endRow; row++) {
-                    int startYTop = row * 2 * ssaa;
-                    int startYBot = (row * 2 + 1) * ssaa;
-                    int destRowOffset = row * cols;
+                for (int col = 0; col < cols; col++) {
+                    int startX = col * ssaa;
 
-                    for (int col = 0; col < cols; col++) {
-                        int startX = col * ssaa;
-
-                        // Downsample Top half-block
-                        int rSumTop = 0, gSumTop = 0, bSumTop = 0;
-                        for (int sy = 0; sy < ssaa; sy++) {
-                            int srcRowOffset = (startYTop + sy) * srcW + startX;
-                            for (int sx = 0; sx < ssaa; sx++) {
-                                int rgb = src[srcRowOffset + sx];
-                                rSumTop += (rgb >> 16) & 0xFF;
-                                gSumTop += (rgb >> 8) & 0xFF;
-                                bSumTop += rgb & 0xFF;
-                            }
+                    // Downsample Top half-block
+                    int rSumTop = 0, gSumTop = 0, bSumTop = 0;
+                    for (int sy = 0; sy < ssaa; sy++) {
+                        int srcRowOffset = (startYTop + sy) * srcW + startX;
+                        for (int sx = 0; sx < ssaa; sx++) {
+                            int rgb = src[srcRowOffset + sx];
+                            rSumTop += (rgb >> 16) & 0xFF;
+                            gSumTop += (rgb >> 8) & 0xFF;
+                            bSumTop += rgb & 0xFF;
                         }
-                        int topColor;
-                        if (shift > 0) {
-                            topColor = ((rSumTop >> shift) << 16) | ((gSumTop >> shift) << 8) | (bSumTop >> shift);
-                        } else {
-                            topColor = (rSumTop << 16) | (gSumTop << 8) | bSumTop;
-                        }
-
-                        // Downsample Bottom half-block
-                        int rSumBot = 0, gSumBot = 0, bSumBot = 0;
-                        for (int sy = 0; sy < ssaa; sy++) {
-                            int srcRowOffset = (startYBot + sy) * srcW + startX;
-                            for (int sx = 0; sx < ssaa; sx++) {
-                                int rgb = src[srcRowOffset + sx];
-                                rSumBot += (rgb >> 16) & 0xFF;
-                                gSumBot += (rgb >> 8) & 0xFF;
-                                bSumBot += rgb & 0xFF;
-                            }
-                        }
-                        int botColor;
-                        if (shift > 0) {
-                            botColor = ((rSumBot >> shift) << 16) | ((gSumBot >> shift) << 8) | (bSumBot >> shift);
-                        } else {
-                            botColor = (rSumBot << 16) | (gSumBot << 8) | bSumBot;
-                        }
-
-                        int destIndex = destRowOffset + col;
-                        codepointBuffer[destIndex] = 0x2580; // '▀'
-                        fgBuffer[destIndex] = topColor;
-                        bgBuffer[destIndex] = botColor;
                     }
-                }
-            }));
-        }
+                    int topColor;
+                    if (shift > 0) {
+                        topColor = ((rSumTop >> shift) << 16) | ((gSumTop >> shift) << 8) | (bSumTop >> shift);
+                    } else {
+                        topColor = (rSumTop << 16) | (gSumTop << 8) | bSumTop;
+                    }
 
-        for (auto& worker : workers) {
-            worker.join();
-        }
+                    // Downsample Bottom half-block
+                    int rSumBot = 0, gSumBot = 0, bSumBot = 0;
+                    for (int sy = 0; sy < ssaa; sy++) {
+                        int srcRowOffset = (startYBot + sy) * srcW + startX;
+                        for (int sx = 0; sx < ssaa; sx++) {
+                            int rgb = src[srcRowOffset + sx];
+                            rSumBot += (rgb >> 16) & 0xFF;
+                            gSumBot += (rgb >> 8) & 0xFF;
+                            bSumBot += rgb & 0xFF;
+                        }
+                    }
+                    int botColor;
+                    if (shift > 0) {
+                        botColor = ((rSumBot >> shift) << 16) | ((gSumBot >> shift) << 8) | (bSumBot >> shift);
+                    } else {
+                        botColor = (rSumBot << 16) | (gSumBot << 8) | bSumBot;
+                    }
+
+                    int destIndex = destRowOffset + col;
+                    codepointBuffer[destIndex] = 0x2580; // '▀'
+                    fgBuffer[destIndex] = topColor;
+                    bgBuffer[destIndex] = botColor;
+                }
+            }
+        });
     }
 
     if (bgBuffer) env->ReleasePrimitiveArrayCritical(bgArray, bgBuffer, 0);
@@ -663,71 +842,59 @@ JNIEXPORT void JNICALL Java_fastsoftware3d_frontend_terminal_Demo3DTerminal_appl
             return (outR << 16) | (outG << 8) | outB;
         };
 
-        int numThreads = (int)std::thread::hardware_concurrency();
-        if (numThreads < 1) numThreads = 1;
-
-        std::vector<std::thread> workers;
+        int numThreads = ThreadPool::getInstance().getThreadCount();
         int rowsPerThread = (rows + numThreads - 1) / numThreads;
 
-        for (int t = 0; t < numThreads; t++) {
+        ThreadPool::getInstance().enqueueAndAwait(numThreads, [=](int t) {
             int startRow = t * rowsPerThread;
             int endRow = std::min(startRow + rowsPerThread, (int)rows);
 
-            if (startRow >= endRow) break;
+            for (int row = startRow; row < endRow; row++) {
+                int yTop = row * 2;
+                int yBot = row * 2 + 1;
+                int destRowOffset = row * cols;
 
-            workers.push_back(std::thread([=]() {
-                for (int row = startRow; row < endRow; row++) {
-                    int yTop = row * 2;
-                    int yBot = row * 2 + 1;
-                    int destRowOffset = row * cols;
+                for (int col = 0; col < cols; col++) {
+                    int x = col;
 
-                    for (int col = 0; col < cols; col++) {
-                        int x = col;
+                    auto processFXAAPixel = [&](int px, int py) -> int {
+                        int rgbM = src[py * srcW + px];
+                        float lumaM = getLuma(px, py);
+                        float lumaN = getLuma(px, py - 1);
+                        float lumaS = getLuma(px, py + 1);
+                        float lumaE = getLuma(px + 1, py);
+                        float lumaW = getLuma(px - 1, py);
 
-                        auto processFXAAPixel = [&](int px, int py) -> int {
-                            int rgbM = src[py * srcW + px];
-                            float lumaM = getLuma(px, py);
-                            float lumaN = getLuma(px, py - 1);
-                            float lumaS = getLuma(px, py + 1);
-                            float lumaE = getLuma(px + 1, py);
-                            float lumaW = getLuma(px - 1, py);
+                        float lumaMin = std::min({lumaM, lumaN, lumaS, lumaE, lumaW});
+                        float lumaMax = std::max({lumaM, lumaN, lumaS, lumaE, lumaW});
+                        float lumaRange = lumaMax - lumaMin;
 
-                            float lumaMin = std::min({lumaM, lumaN, lumaS, lumaE, lumaW});
-                            float lumaMax = std::max({lumaM, lumaN, lumaS, lumaE, lumaW});
-                            float lumaRange = lumaMax - lumaMin;
+                        if (lumaRange < 0.05f) {
+                            return rgbM;
+                        }
 
-                            // Edge detection threshold
-                            if (lumaRange < 0.05f) {
-                                return rgbM;
-                            }
+                        float lumaNW = getLuma(px - 1, py - 1);
+                        float lumaNE = getLuma(px + 1, py - 1);
+                        float lumaSW = getLuma(px - 1, py + 1);
+                        float lumaSE = getLuma(px + 1, py + 1);
 
-                            float lumaNW = getLuma(px - 1, py - 1);
-                            float lumaNE = getLuma(px + 1, py - 1);
-                            float lumaSW = getLuma(px - 1, py + 1);
-                            float lumaSE = getLuma(px + 1, py + 1);
+                        float lumaL = (lumaN + lumaS + lumaE + lumaW) * 0.25f;
+                        float rangeL = std::abs(lumaL - lumaM);
+                        float blend = std::clamp(rangeL / lumaRange, 0.0f, 1.0f);
 
-                            float lumaL = (lumaN + lumaS + lumaE + lumaW) * 0.25f;
-                            float rangeL = std::abs(lumaL - lumaM);
-                            float blend = std::clamp(rangeL / lumaRange, 0.0f, 1.0f);
+                        return getPixelBlend(px, py, blend * 0.5f, rgbM);
+                    };
 
-                            return getPixelBlend(px, py, blend * 0.5f, rgbM);
-                        };
+                    int topColor = processFXAAPixel(x, yTop);
+                    int botColor = processFXAAPixel(x, yBot);
 
-                        int topColor = processFXAAPixel(x, yTop);
-                        int botColor = processFXAAPixel(x, yBot);
-
-                        int destIndex = destRowOffset + col;
-                        codepointBuffer[destIndex] = 0x2580; // '▀'
-                        fgBuffer[destIndex] = topColor;
-                        bgBuffer[destIndex] = botColor;
-                    }
+                    int destIndex = destRowOffset + col;
+                    codepointBuffer[destIndex] = 0x2580; // '▀'
+                    fgBuffer[destIndex] = topColor;
+                    bgBuffer[destIndex] = botColor;
                 }
-            }));
-        }
-
-        for (auto& worker : workers) {
-            worker.join();
-        }
+            }
+        });
     }
 
     if (bgBuffer) env->ReleasePrimitiveArrayCritical(bgArray, bgBuffer, 0);

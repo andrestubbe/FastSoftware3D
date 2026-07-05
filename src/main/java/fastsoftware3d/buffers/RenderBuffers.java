@@ -14,19 +14,20 @@ public class RenderBuffers {
     public BufferedImage screenBuffer;
     public int[] screenPixels;
 
-    // High-resolution rendering target (for SSAA)
     public BufferedImage renderBuffer;
     public int[] renderPixels;
     public int[] renderBackground;
+    public fastsoftware3d.core.Framebuffer renderFb;
 
     // Downsampled buffer (SSAA intermediate)
     public BufferedImage downsampleBuffer;
     public int[] downsamplePixels;
 
-    private final int screenWidth;
-    private final int screenHeight;
-    private final int lowResWidth;
-    private final int lowResHeight;
+    private int screenWidth;
+    private int screenHeight;
+    private int lowResWidth;
+    private int lowResHeight;
+    private final int[] baseDimsResult = new int[2];
 
     public RenderBuffers(int screenWidth, int screenHeight, int lowResWidth, int lowResHeight) {
         this.screenWidth = screenWidth;
@@ -59,19 +60,31 @@ public class RenderBuffers {
      * @param ssaaFactor SSAA multiplier (1, 2, 4, 8, 16)
      */
     public synchronized void reallocateForSize(int baseW, int baseH, int ssaaFactor) {
+        this.screenWidth = baseW;
+        this.screenHeight = baseH;
+
+        if (screenBuffer == null || screenBuffer.getWidth() != baseW || screenBuffer.getHeight() != baseH) {
+            screenBuffer = new BufferedImage(baseW, baseH, BufferedImage.TYPE_INT_RGB);
+            screenPixels = ((DataBufferInt) screenBuffer.getRaster().getDataBuffer()).getData();
+        }
+
         int renderW = baseW * ssaaFactor;
         int renderH = baseH * ssaaFactor;
 
-        // Allocate render buffer
-        renderBuffer = new BufferedImage(renderW, renderH, BufferedImage.TYPE_INT_RGB);
-        renderPixels = ((DataBufferInt) renderBuffer.getRaster().getDataBuffer()).getData();
-        renderBackground = new int[renderW * renderH];
-        Arrays.fill(renderBackground, 0x000000);
+        if (renderBuffer == null || renderBuffer.getWidth() != renderW || renderBuffer.getHeight() != renderH) {
+            renderBuffer = new BufferedImage(renderW, renderH, BufferedImage.TYPE_INT_RGB);
+            renderPixels = ((DataBufferInt) renderBuffer.getRaster().getDataBuffer()).getData();
+            renderBackground = new int[renderW * renderH];
+            Arrays.fill(renderBackground, 0x000000);
+            renderFb = new fastsoftware3d.core.Framebuffer(renderW, renderH, renderPixels);
+        }
 
         // Allocate downsample buffer if SSAA is enabled
         if (ssaaFactor > 1) {
-            downsampleBuffer = new BufferedImage(baseW, baseH, BufferedImage.TYPE_INT_RGB);
-            downsamplePixels = ((DataBufferInt) downsampleBuffer.getRaster().getDataBuffer()).getData();
+            if (downsampleBuffer == null || downsampleBuffer.getWidth() != baseW || downsampleBuffer.getHeight() != baseH) {
+                downsampleBuffer = new BufferedImage(baseW, baseH, BufferedImage.TYPE_INT_RGB);
+                downsamplePixels = ((DataBufferInt) downsampleBuffer.getRaster().getDataBuffer()).getData();
+            }
         } else {
             downsampleBuffer = null;
             downsamplePixels = null;
@@ -82,9 +95,8 @@ public class RenderBuffers {
      * Get the base (logical) dimensions for the current mode.
      */
     public int[] getBaseDimensions(boolean lowResMode) {
-        return new int[]{
-                lowResMode ? lowResWidth : screenWidth,
-                lowResMode ? lowResHeight : screenHeight
-        };
+        baseDimsResult[0] = lowResMode ? lowResWidth : screenWidth;
+        baseDimsResult[1] = lowResMode ? lowResHeight : screenHeight;
+        return baseDimsResult;
     }
 }

@@ -10,6 +10,11 @@ import fastsoftware3d.material.Material;
  */
 public final class JavaRasterizer implements TriangleRasterizer {
 
+    private static final float FOG_NEAR = 750.0f;
+    private static final float FOG_FAR = 2100.0f;
+    private static final float FOG_RANGE_RCP = 1.0f / (FOG_FAR - FOG_NEAR);
+    private static final int FOG_COLOR = 0x000000;
+
     @Override
     public void drawTriangle(
             float x0, float y0, float z0, float u0, float v0,
@@ -96,19 +101,17 @@ public final class JavaRasterizer implements TriangleRasterizer {
                         float u = uVal * depth;
                         float v = vVal * depth;
 
-                        u = u - (float) Math.floor(u);
-                        v = v - (float) Math.floor(v);
+                        u = u - (int)u;
+                        if (u < 0) u += 1.0f;
+                        v = v - (int)v;
+                        if (v < 0) v += 1.0f;
 
                         int texX = (int) (u * (texWidth - 1));
                         int texY = (int) (v * (texHeight - 1));
                         int texColor = texels[texY * texWidth + texX];
 
                         // Linear depth fog calculation
-                        float fogNear = 750.0f;
-                        float fogFar = 2100.0f;
-                        int fogColor = 0x000000; // Black fog color
-
-                        float fogFactor = (fogFar - depth) / (fogFar - fogNear);
+                        float fogFactor = (FOG_FAR - depth) * FOG_RANGE_RCP;
                         if (fogFactor < 0.50f) fogFactor = 0.50f; // Max 50% fog at far distance
                         if (fogFactor > 1.0f) fogFactor = 1.0f;
 
@@ -119,9 +122,9 @@ public final class JavaRasterizer implements TriangleRasterizer {
                             int gT = (texColor >> 8) & 0xFF;
                             int bT = texColor & 0xFF;
 
-                            int rF = (fogColor >> 16) & 0xFF;
-                            int gF = (fogColor >> 8) & 0xFF;
-                            int bF = fogColor & 0xFF;
+                            int rF = (FOG_COLOR >> 16) & 0xFF;
+                            int gF = (FOG_COLOR >> 8) & 0xFF;
+                            int bF = FOG_COLOR & 0xFF;
 
                             int rOut = (int) (rT * fogFactor + rF * (1.0f - fogFactor));
                             int gOut = (int) (gT * fogFactor + gF * (1.0f - fogFactor));

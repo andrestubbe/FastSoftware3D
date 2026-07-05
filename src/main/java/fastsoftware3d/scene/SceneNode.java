@@ -9,6 +9,7 @@ public abstract class SceneNode {
     private SceneNode parent;
     private final List<SceneNode> children = new ArrayList<>();
     protected final Transform transform = new Transform();
+    private final Transform cachedWorldTransform = new Transform();
 
     public Transform getTransform() {
         return transform;
@@ -50,11 +51,10 @@ public abstract class SceneNode {
     }
 
     public void render(Renderer3D renderer, Transform parentTransform, Graphics2D g) {
-        Transform worldTransform = Transform.combine(parentTransform, transform);
-        renderSelf(renderer, worldTransform, g);
-        // System.out.println("  SceneNode.render() - " + children.size() + " children");
+        Transform.combine(parentTransform, transform, cachedWorldTransform);
+        renderSelf(renderer, cachedWorldTransform, g);
         for (SceneNode child : children) {
-            child.render(renderer, worldTransform, g);
+            child.render(renderer, cachedWorldTransform, g);
         }
     }
 

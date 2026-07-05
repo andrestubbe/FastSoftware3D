@@ -1,67 +1,92 @@
 package fastsoftware3d.camera;
 
-import java.awt.event.KeyEvent;
+import fastsoftware3d.physics.WallCollider;
 
 public class CameraController {
 
     public final Camera camera;
+    public final PlayerSettings settings;
+    public final InputManager input;
+    public final PlayerMovement movement;
 
-    // Movement flags
-    public volatile boolean moveFwd;
-    public volatile boolean moveBwd;
-    public volatile boolean strafeLeft;
-    public volatile boolean strafeRight;
-    public volatile boolean moveUp;
-    public volatile boolean moveDown;
-    public volatile boolean rotLeft;
-    public volatile boolean rotRight;
-    public volatile boolean rotUp;
-    public volatile boolean rotDown;
-    public volatile boolean fovInc, fovDec;
+    // Game Feel: Spring Damper State
+    public float currentEyeOffset = 0.0f;
+    public float targetEyeOffset = 0.0f;
+    public float eyeOffsetVelocity = 0.0f;
 
-    // SHIFT acceleration
-    public volatile boolean shiftDown;
-
-    // AA and FOV state
-    public volatile int ssaaFactor = 1;
-    public volatile float baseFov = 150.0f;
-    public volatile boolean asciiMode = false;
-    public volatile boolean collisionEnabled = false;
-    public volatile boolean edgeAware = false;
-
-    // Velocity and smoothing state for inertia
-    public float currentVelForward = 0.0f;
-    public float currentVelStrafe = 0.0f;
-    public float movementSmoothing = 8.0f; // factor to control smoothing (lower = smoother/slidey, higher = instant)
+    public float currentPitchOffset = 0.0f;
+    public float pitchOffsetVelocity = 0.0f;
+    public float targetPitchOffset = 0.0f;
 
     // Turning/Banking state
     public float lastYaw = 0.0f;
     public float currentRotVelocity = 0.0f;
     public float rotationSmoothing = 12.0f;
-    public float bankingFactor = 0.08f; // controls camera roll tilt when turning
+    public float bankingFactor = 0.08f; 
 
     // Head bobbing state
     public float bobTime = 0.0f;
     public float currentBobY = 0.0f;
-    public float bobAmplitude = 4.0f;  // peak height of bobbing
-    public float bobFrequency = 7.0f;  // speed of bobbing
+    public float bobAmplitude = 4.0f;  
+    public float bobFrequency = 7.0f;  
+
+    private float sinYaw, cosYaw;
 
     public CameraController(Camera camera) {
         this.camera = camera;
-        this.baseFov = camera.fov;
+        this.settings = new PlayerSettings();
+        
+        // Ensure starting FOV matches the camera
+        this.settings.baseFov = camera.fov; 
+
+        this.input = new InputManager(camera, settings);
+        this.movement = new PlayerMovement();
+        
         this.lastYaw = camera.yaw;
     }
 
+    // Proxy for physics initialization
+    public void setCollisionSystem(WallCollider collisionSys) {
+        this.movement.collisionSys = collisionSys;
+    }
+    
+    // Some public getters mapped for UI / Renderer
+    public boolean isAsciiMode() { return settings.asciiMode; }
+    public int getSsaaFactor() { return settings.ssaaFactor; }
+    public boolean isEdgeAware() { return settings.edgeAware; }
+    public float getBaseFov() { return settings.baseFov; }
+
     public float update(float deltaTime) {
+        processKeyboardRotation(deltaTime);
+        updateRotationalBanking(deltaTime);
+        
+        movement.update(deltaTime, camera, input, settings, sinYaw, cosYaw);
+        
+        applyLeaningAndBanking(deltaTime);
+        applySpringDamperAndCameraShake(deltaTime);
+        updateHeadBobbingAndFov(deltaTime);
+
+        camera.pitch -= currentPitchOffset;
+        return 0.8f * deltaTime;
+    }
+
+    private void processKeyboardRotation(float deltaTime) {
         float rotSpeed = 1.5f * deltaTime;
+        if (input.rotLeft) camera.yaw -= rotSpeed;
+        if (input.rotRight) camera.yaw += rotSpeed;
+        if (input.rotUp) camera.pitch = Math.min(1.4f, camera.pitch + rotSpeed);
+        if (input.rotDown) camera.pitch = Math.max(-1.4f, camera.pitch - rotSpeed);
 
-        // 1. Process keyboard rotations first
-        if (rotLeft)  camera.yaw -= rotSpeed;
-        if (rotRight) camera.yaw += rotSpeed;
-        if (rotUp)    camera.pitch = Math.min(1.4f, camera.pitch + rotSpeed);
-        if (rotDown)  camera.pitch = Math.max(-1.4f, camera.pitch - rotSpeed);
+        float pitchForce = (targetPitchOffset - currentPitchOffset) * 150.0f - pitchOffsetVelocity * 15.0f;
+        pitchOffsetVelocity += pitchForce * deltaTime;
+        currentPitchOffset += pitchOffsetVelocity * deltaTime;
+        targetPitchOffset = 0.0f; 
 
-        // 2. Calculate turning rate and smooth it for banking tilt
+        sinYaw = (float) Math.sin(camera.yaw);
+        cosYaw = (float) Math.cos(camera.yaw);
+    }
+
+    private void updateRotationalBanking(float deltaTime) {
         float deltaYaw = camera.yaw - lastYaw;
         lastYaw = camera.yaw;
 
@@ -73,278 +98,104 @@ public class CameraController {
         targetRotVelocity = Math.max(-maxRotVel, Math.min(maxRotVel, targetRotVelocity));
         float rotInterpolationStep = Math.min(1.0f, rotationSmoothing * deltaTime);
         currentRotVelocity += (targetRotVelocity - currentRotVelocity) * rotInterpolationStep;
+    }
 
-        // 3. Calculate target movement velocities based on keys
-        float targetVelForward = 0.0f;
-        if (moveFwd) targetVelForward += 1.0f;
-        if (moveBwd) targetVelForward -= 1.0f;
-
-        float targetVelStrafe = 0.0f;
-        if (strafeRight) targetVelStrafe += 1.0f;
-        if (strafeLeft)  targetVelStrafe -= 1.0f;
-
-        // Normalize direction vector to keep movement speed consistent diagonally
-        float len = (float) Math.sqrt(targetVelForward * targetVelForward + targetVelStrafe * targetVelStrafe);
-        if (len > 0.0f) {
-            targetVelForward /= len;
-            targetVelStrafe /= len;
-        }
-
-        // Apply movement speed bases
-        float maxSpeed = 200.0f;
-        if (shiftDown) maxSpeed *= 3.0f;
-
-        targetVelForward *= maxSpeed;
-        targetVelStrafe *= maxSpeed;
-
-        // Smoothly interpolate current velocity to target velocity (inertia/friction)
-        float interpolationStep = Math.min(1.0f, movementSmoothing * deltaTime);
-        currentVelForward += (targetVelForward - currentVelForward) * interpolationStep;
-        currentVelStrafe  += (targetVelStrafe - currentVelStrafe) * interpolationStep;
-
-        // Forward vector (yaw-only to keep movement on the XZ plane)
-        float fwdX = -(float) Math.sin(camera.yaw);
-        float fwdZ = (float) Math.cos(camera.yaw);
-
-        // Right vector (perpendicular to forward)
-        float rightX = (float) Math.cos(camera.yaw);
-        float rightZ = (float) Math.sin(camera.yaw);
-
-        // Calculate next position using smoothed velocities
-        float nextX = camera.x + (fwdX * currentVelForward + rightX * currentVelStrafe) * deltaTime;
-        float nextZ = camera.z + (fwdZ * currentVelForward + rightZ * currentVelStrafe) * deltaTime;
-
-        // 4. Leaning roll interpolation (flipped axis, 2.5 degrees tilt + banking on turning)
+    private void applyLeaningAndBanking(float deltaTime) {
         float targetRoll = 0.0f;
-        if (strafeLeft && !strafeRight) {
-            targetRoll = (float) Math.toRadians(2.5f);
-        } else if (strafeRight && !strafeLeft) {
-            targetRoll = (float) Math.toRadians(-2.5f);
+        float baseTargetPitchOffset = 0.0f;
+
+        if (settings.hoverboardMode) {
+            if (input.strafeLeft && !input.strafeRight) targetRoll = (float) Math.toRadians(7.5f);
+            else if (input.strafeRight && !input.strafeLeft) targetRoll = (float) Math.toRadians(-7.5f);
+            
+            if (input.moveFwd && !input.moveBwd) baseTargetPitchOffset = (float) Math.toRadians(-6.0f);
+            else if (input.moveBwd && !input.moveFwd) baseTargetPitchOffset = (float) Math.toRadians(6.0f);
+        } else {
+            if (input.strafeLeft && !input.strafeRight) targetRoll = (float) Math.toRadians(2.5f);
+            else if (input.strafeRight && !input.strafeLeft) targetRoll = (float) Math.toRadians(-2.5f);
         }
-        // Add rotational banking: turning left (negative yaw velocity) tilts camera left
+
         targetRoll += -currentRotVelocity * bankingFactor;
 
-        float rollSpeed = 10.0f * deltaTime;
+        float rollSpeed = 2.5f * deltaTime;
         camera.roll += (targetRoll - camera.roll) * Math.min(1.0f, rollSpeed);
 
-        // 5. Collision bounds checks
-        boolean collision = false;
-        if (collisionEnabled) {
-            if (nextX < -2000.0f || nextX > 2000.0f || nextZ < -900.0f || nextZ > 500.0f) {
-                collision = true;
-            }
-            float pillarRadius = 35.0f; 
-            if (!collision) {
-                for (float px = -1800.0f; px <= 1800.0f; px += 200.0f) {
-                    for (float pz = -700.0f; pz <= 300.0f; pz += 200.0f) {
-                        if (Math.abs(px - -1800.0f) < 50.0f && Math.abs(pz - -300.0f) < 150.0f) {
-                            continue;
-                        }
-                        float dx = nextX - px;
-                        float dz = nextZ - pz;
-                        if (dx * dx + dz * dz < (pillarRadius + 15.0f) * (pillarRadius + 15.0f)) {
-                            collision = true;
-                            break;
-                        }
-                    }
-                    if (collision) break;
-                }
+        if (settings.hoverboardMode) {
+            targetPitchOffset = baseTargetPitchOffset;
+            camera.yaw += camera.roll * 1.5f * deltaTime;
+            
+            if (movement.dodgeSteer != 0.0f) {
+                camera.yaw -= movement.dodgeSteer * 2.5f * Math.min(1.0f, movement.getCurrentSpeed() / 500.0f) * deltaTime;
+                camera.roll -= movement.dodgeSteer * 3.5f * Math.min(1.0f, movement.getCurrentSpeed() / 500.0f) * deltaTime;
             }
         }
+    }
 
-        if (!collision) {
-            camera.x = nextX;
-            camera.z = nextZ;
+    private void applySpringDamperAndCameraShake(float deltaTime) {
+        if (settings.collisionEnabled) {
+            targetEyeOffset = input.crouchDown ? -50.0f : 0.0f;
+
+            if (movement.justHitWall) {
+                pitchOffsetVelocity += movement.getCurrentSpeed() * 0.015f;
+            }
+
+            if (movement.lastImpactVelocityY < -100.0f) {
+                currentEyeOffset += movement.lastImpactVelocityY * 0.025f;
+                movement.lastImpactVelocityY = 0.0f; 
+            }
+
+            float springStiff = 150.0f;
+            float springDamp = 15.0f;
+            float eyeForce = (targetEyeOffset - currentEyeOffset) * springStiff - eyeOffsetVelocity * springDamp;
+            eyeOffsetVelocity += eyeForce * deltaTime;
+            currentEyeOffset += eyeOffsetVelocity * deltaTime;
+
+            if (currentEyeOffset < -75.0f) {
+                currentEyeOffset = -75.0f;
+                eyeOffsetVelocity = 0.0f;
+            }
+            if (currentEyeOffset > 50.0f) {
+                currentEyeOffset = 50.0f;
+                eyeOffsetVelocity = 0.0f;
+            }
+
+            camera.y = movement.physicalY + currentEyeOffset;
+            camera.pitch += currentPitchOffset;
+        } else {
+            camera.pitch += currentPitchOffset; 
         }
+    }
 
-        // 6. Up/Down flying movement
-        if (moveUp)   camera.y += maxSpeed * deltaTime;
-        if (moveDown) camera.y -= maxSpeed * deltaTime;
-
-        // 7. Head bobbing calculation (Doom bobbing)
-        float speedSq = currentVelForward * currentVelForward + currentVelStrafe * currentVelStrafe;
+    private void updateHeadBobbingAndFov(float deltaTime) {
+        float currentSpeed = movement.getCurrentSpeed();
+        float speedSq = movement.currentVelForward * movement.currentVelForward + movement.currentVelStrafe * movement.currentVelStrafe;
+        
         float targetBobY = 0.0f;
         if (speedSq > 10.0f) {
-            float currentSpeed = (float) Math.sqrt(speedSq);
-            // Bobbing frequency scales with velocity
-            bobTime += deltaTime * bobFrequency * (currentSpeed / 200.0f);
-            targetBobY = (float) Math.sin(bobTime) * bobAmplitude;
+            if (settings.hoverboardMode) {
+                bobTime += deltaTime * 2.5f * (currentSpeed / 500.0f);
+                targetBobY = (float) Math.sin(bobTime) * 2.0f;
+            } else {
+                bobTime += deltaTime * bobFrequency * (currentSpeed / 200.0f);
+                targetBobY = (float) Math.sin(bobTime) * bobAmplitude;
+            }
         }
-        // Smoothly interpolate currentBobY towards targetBobY
-        currentBobY += (targetBobY - currentBobY) * Math.min(1.0f, 15.0f * deltaTime);
+        float bobInterp = settings.hoverboardMode ? 5.0f : 15.0f;
+        currentBobY += (targetBobY - currentBobY) * Math.min(1.0f, bobInterp * deltaTime);
 
-        if (fovInc) baseFov = Math.min(170.0f, baseFov + 40.0f * deltaTime);
-        if (fovDec) baseFov = Math.max(10.0f, baseFov - 40.0f * deltaTime);
-
-        camera.fov = baseFov;
-
-        return 0.8f * deltaTime;
+        float fovWarpFactor = Math.max(0.0f, Math.min(1.0f, (currentSpeed - 500.0f) / 500.0f));
+        camera.fov = settings.baseFov + (fovWarpFactor * (settings.hoverboardMode ? 35.0f : 20.0f));
     }
 
     public boolean onKey(int vKey, boolean isPressed) {
-        switch (vKey) {
-            case 0x57:
-                moveFwd = isPressed;
-                return false; // W
-            case 0x53:
-                moveBwd = isPressed;
-                return false; // S
-            case 0x41:
-                strafeLeft = isPressed;
-                return false; // A
-            case 0x44:
-                strafeRight = isPressed;
-                return false; // D
-            case 0x51:
-                moveUp = isPressed;
-                return false; // Q
-            case 0x45:
-                moveDown = isPressed;
-                return false; // E
-
-            case 0x25:
-                rotLeft = isPressed;
-                return false; // ←
-            case 0x27:
-                rotRight = isPressed;
-                return false; // →
-            case 0x26:
-                rotUp = isPressed;
-                return false; // ↑
-            case 0x28:
-                rotDown = isPressed;
-                return false; // ↓
-
-            case 0x10:
-                shiftDown = isPressed;
-                return false; // SHIFT
-
-            case 0xBB:
-            case 0x6B:
-                fovInc = isPressed;
-                return false; // +
-            case 0xBD:
-            case 0x6D:
-                fovDec = isPressed;
-                return false; // -
-
-            case 0x4F: // O → SSAA toggle
-                if (isPressed) {
-                    if (ssaaFactor == 1) ssaaFactor = 2;
-                    else if (ssaaFactor == 2) ssaaFactor = 4;
-                    else if (ssaaFactor == 4) ssaaFactor = 8;
-                    else if (ssaaFactor == 8) ssaaFactor = 16;
-                    else ssaaFactor = 1;
-                    return true;
-                }
-                return false;
-
-            case 0x31: // 1 → SSAA 1x
-                if (isPressed) {
-                    ssaaFactor = 1;
-                    return true;
-                }
-                return false;
-
-            case 0x32: // 2 → SSAA 2x
-                if (isPressed) {
-                    ssaaFactor = 2;
-                    return true;
-                }
-                return false;
-
-            case 0x33: // 3 → SSAA 4x
-                if (isPressed) {
-                    ssaaFactor = 4;
-                    return true;
-                }
-                return false;
-
-            case 0x34: // 4 → SSAA 8x
-                if (isPressed) {
-                    ssaaFactor = 8;
-                    return true;
-                }
-                return false;
-
-            case 0x35: // 5 → SSAA 16x
-                if (isPressed) {
-                    ssaaFactor = 16;
-                    return true;
-                }
-                return false;
-
-            case 0x4B: // K → Fisheye toggle
-                if (isPressed) {
-                    camera.fisheyeEnabled = !camera.fisheyeEnabled;
-                    return true; // request buffer/realloc update if needed, or simple redraw
-                }
-                return false;
-
-            case 0x55: // U → Decrease strength / transition to pincushion distortion (limit -0.4f)
-                if (isPressed) {
-                    camera.fisheyeStrength = Math.max(-0.4f, camera.fisheyeStrength - 0.05f);
-                    return true;
-                }
-                return false;
-
-            case 0x49: // I → Increase strength / transition to barrel distortion (limit 1.0f)
-                if (isPressed) {
-                    camera.fisheyeStrength = Math.min(1.0f, camera.fisheyeStrength + 0.05f);
-                    return true;
-                }
-                return false;
-
-            case 0x4D: // M → Toggle ASCII Mode
-                if (isPressed) {
-                    asciiMode = !asciiMode;
-                    return true;
-                }
-                return false;
-
-            case 0x43: // C → Toggle Collision Detection
-                if (isPressed) {
-                    collisionEnabled = !collisionEnabled;
-                    return true;
-                }
-                return false;
-
-            case 0x48: // H → Toggle Edge-Aware Downsampling (HBSR)
-                if (isPressed) {
-                    edgeAware = !edgeAware;
-                    return true;
-                }
-                return false;
-
-            case 0x46: // F key (formerly FXAA, now does nothing or can be ignored)
-                return false;
-
-            case 0x47: // G → Cycle Mipmap Mode (0=None, 1=Tweaked Discrete, 2=Dithered, 3=Bilinear Level Blend)
-                if (isPressed) {
-                    fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode = (fastsoftware3d.rasterizer.NativeRasterizer.mipmapMode + 1) % 4;
-                    return true;
-                }
-                return false;
-
-            case 0x72: // F3 → Toggle Depth Visualizer
-                if (isPressed) {
-                    camera.depthVisualizer = !camera.depthVisualizer;
-                    return true;
-                }
-                return false;
-        }
-        return false;
+        return input.onKey(vKey, isPressed);
     }
 
     public boolean onKeySwing(int keyCode, boolean isPressed) {
-        return onKey(keyCode, isPressed);
+        return input.onKeySwing(keyCode, isPressed);
     }
 
     public void onMouseMove(int deltaX, int deltaY, boolean isDrag) {
-        if (isDrag) {
-            camera.yaw   -= deltaX * 0.006f; // 3x faster yaw
-            camera.pitch += deltaY * 0.002f; // flipped Y axis
-            camera.pitch  = Math.max(-1.4f, Math.min(1.4f, camera.pitch));
-        }
+        input.onMouseMove(deltaX, deltaY, isDrag);
     }
 }

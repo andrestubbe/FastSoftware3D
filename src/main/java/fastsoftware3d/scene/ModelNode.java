@@ -20,7 +20,7 @@ public class ModelNode extends SceneNode {
         if (model != null && material != null) {
             renderer.renderModel(model,
                     worldTransform.x, worldTransform.y, worldTransform.z,
-                    worldTransform.yaw,
+                    worldTransform.pitch, worldTransform.yaw, worldTransform.roll,
                     material);
         }
     }

@@ -36,7 +36,11 @@ public class Transform {
 
     public static Transform combine(Transform parent, Transform local) {
         Transform result = parent.copy();
+        combine(parent, local, result);
+        return result;
+    }
 
+    public static void combine(Transform parent, Transform local, Transform result) {
         float lx = local.x * parent.scaleX;
         float ly = local.y * parent.scaleY;
         float lz = local.z * parent.scaleZ;
@@ -47,18 +51,16 @@ public class Transform {
         float rx = lx * cosY - lz * sinY;
         float rz = lx * sinY + lz * cosY;
 
-        result.x += rx;
-        result.y += ly;
-        result.z += rz;
+        result.x = parent.x + rx;
+        result.y = parent.y + ly;
+        result.z = parent.z + rz;
 
-        result.yaw += local.yaw;
-        result.pitch += local.pitch;
-        result.roll += local.roll;
+        result.yaw = parent.yaw + local.yaw;
+        result.pitch = parent.pitch + local.pitch;
+        result.roll = parent.roll + local.roll;
 
-        result.scaleX *= local.scaleX;
-        result.scaleY *= local.scaleY;
-        result.scaleZ *= local.scaleZ;
-
-        return result;
+        result.scaleX = parent.scaleX * local.scaleX;
+        result.scaleY = parent.scaleY * local.scaleY;
+        result.scaleZ = parent.scaleZ * local.scaleZ;
     }
 }

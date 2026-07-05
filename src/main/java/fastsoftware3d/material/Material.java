@@ -2,6 +2,8 @@ package fastsoftware3d.material;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.util.stream.IntStream;
 
 /**
  * A material is a texture (int[] texels) plus its dimensions.
@@ -55,50 +57,59 @@ public final class Material {
         System.arraycopy(texels, 0, mipmapData, 0, texels.length);
 
         // Generate downscaled levels using box filtering
-        for (int level = 1; level < levels; level++) {
-            int srcWidth = mipmapWidths[level - 1];
-            int srcHeight = mipmapHeights[level - 1];
-            int srcOffset = mipmapOffsets[level - 1];
+        int width = texWidth;
+        int height = texHeight;
+        IntStream.range(1, levels).forEach(level -> {
+            int srcWidth = Math.max(1, width >> (level - 1));
+            int srcHeight = Math.max(1, height >> (level - 1));
+            int dstWidth = Math.max(1, width >> level);
+            int dstHeight = Math.max(1, height >> level);
 
-            int dstWidth = mipmapWidths[level];
-            int dstHeight = mipmapHeights[level];
+            int srcOffset = mipmapOffsets[level - 1];
             int dstOffset = mipmapOffsets[level];
 
-            for (int dy = 0; dy < dstHeight; dy++) {
-                int sy0 = dy * 2;
-                int sy1 = Math.min(sy0 + 1, srcHeight - 1);
-                for (int dx = 0; dx < dstWidth; dx++) {
-                    int sx0 = dx * 2;
-                    int sx1 = Math.min(sx0 + 1, srcWidth - 1);
+            for (int y = 0; y < dstHeight; y++) {
+                for (int x = 0; x < dstWidth; x++) {
+                    int sx = x * 2;
+                    int sy = y * 2;
 
-                    int p00 = mipmapData[srcOffset + sy0 * srcWidth + sx0];
-                    int p01 = mipmapData[srcOffset + sy0 * srcWidth + sx1];
-                    int p10 = mipmapData[srcOffset + sy1 * srcWidth + sx0];
-                    int p11 = mipmapData[srcOffset + sy1 * srcWidth + sx1];
+                    int sx1 = Math.min(sx + 1, srcWidth - 1);
+                    int sy1 = Math.min(sy + 1, srcHeight - 1);
 
-                    // Average colors
-                    int r = (((p00 >> 16) & 0xFF) + ((p01 >> 16) & 0xFF) + ((p10 >> 16) & 0xFF) + ((p11 >> 16) & 0xFF)) / 4;
-                    int g = (((p00 >> 8) & 0xFF) + ((p01 >> 8) & 0xFF) + ((p10 >> 8) & 0xFF) + ((p11 >> 8) & 0xFF)) / 4;
-                    int b = ((p00 & 0xFF) + (p01 & 0xFF) + (p10 & 0xFF) + (p11 & 0xFF)) / 4;
+                    int c00 = mipmapData[srcOffset + sy * srcWidth + sx];
+                    int c10 = mipmapData[srcOffset + sy * srcWidth + sx1];
+                    int c01 = mipmapData[srcOffset + sy1 * srcWidth + sx];
+                    int c11 = mipmapData[srcOffset + sy1 * srcWidth + sx1];
 
-                    mipmapData[dstOffset + dy * dstWidth + dx] = (r << 16) | (g << 8) | b;
+                    int r = (((c00 >> 16) & 0xFF) + ((c10 >> 16) & 0xFF) + ((c01 >> 16) & 0xFF) + ((c11 >> 16) & 0xFF)) >> 2;
+                    int g = (((c00 >> 8) & 0xFF) + ((c10 >> 8) & 0xFF) + ((c01 >> 8) & 0xFF) + ((c11 >> 8) & 0xFF)) >> 2;
+                    int b = ((c00 & 0xFF) + (c10 & 0xFF) + (c01 & 0xFF) + (c11 & 0xFF)) >> 2;
+
+                    mipmapData[dstOffset + y * dstWidth + x] = (r << 16) | (g << 8) | b;
                 }
             }
-        }
+        });
     }
 
     // ------------------------------------------------------------------
     // Factory methods
     // ------------------------------------------------------------------
 
+    private static final java.util.Map<String, Material> textureCache = new java.util.HashMap<>();
+
     public static Material fromPng(String path) {
+        if (textureCache.containsKey(path)) {
+            return textureCache.get(path);
+        }
         try {
-            BufferedImage img = ImageIO.read(new java.io.File(path));
+            BufferedImage img = ImageIO.read(new File(path));
             int w = img.getWidth();
             int h = img.getHeight();
             int[] tex = new int[w * h];
             img.getRGB(0, 0, w, h, tex, 0, w);
-            return new Material(tex, w, h);
+            Material mat = new Material(tex, w, h);
+            textureCache.put(path, mat);
+            return mat;
         } catch (Exception e) {
             throw new RuntimeException("Failed to load texture: " + path, e);
         }

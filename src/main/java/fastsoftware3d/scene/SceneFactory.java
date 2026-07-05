@@ -10,6 +10,9 @@ import java.io.File;
  */
 public final class SceneFactory {
 
+    // Store all loaded models for physics initialization
+    public static final java.util.List<ObjLoader.ModelData> loadedCollisionModels = new java.util.ArrayList<>();
+
     private SceneFactory() {
     }
 
@@ -44,14 +47,69 @@ public final class SceneFactory {
     /**
      * Creates and builds the Wolfenstein scene (room.obj + wall.png).
      */
-    public static Scene createWolfScene(float scale) {
-        ObjLoader.ModelData roomModel = loadRoom(scale);
-        Material wallMat = loadWallMaterial();
+    private static ObjLoader.ModelData cachedRoomModel = null;
+    private static Material cachedWallMat = null;
+
+    public static Scene createWolfScene(float scale, boolean useOctree) {
+        if (cachedRoomModel == null) {
+            cachedRoomModel = loadRoom(scale);
+            cachedWallMat = loadWallMaterial();
+        }
 
         Scene scene = new Scene();
-        ModelNode roomNode = new ModelNode(roomModel, wallMat);
-        scene.getRoot().addChild(roomNode);
+        if (cachedRoomModel.faceCount > 0) {
+            SceneNode rootNode = useOctree ? OctreeBuilder.build(cachedRoomModel, cachedWallMat) : new ModelNode(cachedRoomModel, cachedWallMat);
+            scene.getRoot().addChild(rootNode);
+        }
         return scene;
+    }
+
+    public static Scene createCustomScene(String objPath, String pngPath, float scale, boolean useOctree) {
+        ObjLoader.ModelData m = new ObjLoader.ModelData();
+        try {
+            m = ObjLoader.load(objPath);
+            scaleModel(m, scale, true);
+            loadedCollisionModels.add(m);
+        } catch (Exception e) {
+            System.err.println("Failed to load " + objPath + ": " + e.getMessage());
+        }
+
+        Material mat = Material.solidColor(0x6E6E6E);
+        try {
+            mat = Material.fromPng(pngPath);
+        } catch (Exception e) {
+            System.err.println("Failed to load " + pngPath + ": " + e.getMessage());
+        }
+
+        Scene scene = new Scene();
+        if (m.faceCount > 0) {
+            SceneNode rootNode = useOctree ? OctreeBuilder.build(m, mat) : new ModelNode(m, mat);
+            scene.getRoot().addChild(rootNode);
+        }
+        return scene;
+    }
+
+    public static void appendCustomModel(Scene scene, String objPath, String pngPath, float scale, boolean useOctree) {
+        ObjLoader.ModelData m = new ObjLoader.ModelData();
+        try {
+            m = ObjLoader.load(objPath);
+            scaleModel(m, scale, true); // Flip X and Z for Blender imports
+            loadedCollisionModels.add(m); // Add all models for collision
+        } catch (Exception e) {
+            System.err.println("Failed to load " + objPath + ": " + e.getMessage());
+        }
+
+        Material mat = Material.solidColor(0x6E6E6E);
+        try {
+            mat = Material.fromPng(pngPath);
+        } catch (Exception e) {
+            System.err.println("Failed to load " + pngPath + ": " + e.getMessage());
+        }
+
+        if (m.faceCount > 0) {
+            SceneNode rootNode = useOctree ? OctreeBuilder.build(m, mat) : new ModelNode(m, mat);
+            scene.getRoot().addChild(rootNode);
+        }
     }
 
     private static ObjLoader.ModelData loadRoom(float scale) {
@@ -61,7 +119,8 @@ public final class SceneFactory {
             if (f.exists()) {
                 try {
                     ObjLoader.ModelData m = ObjLoader.load(f.getPath());
-                    scaleModel(m, scale);
+                    scaleModel(m, scale, false); // Do not flip the legacy Wolfenstein model
+                    loadedCollisionModels.add(m);
                     System.out.println("Loaded room model from: " + path);
                     return m;
                 } catch (Exception e) {
@@ -73,15 +132,44 @@ public final class SceneFactory {
         return new ObjLoader.ModelData();
     }
 
-    private static void scaleModel(ObjLoader.ModelData m, float s) {
-        for (float[] v : m.vertices) {
-            v[0] *= s;
-            v[1] *= s;
-            v[2] *= s;
+    private static void scaleModel(ObjLoader.ModelData m, float s, boolean mirrorSwapXZ) {
+        for (int i = 0; i < m.vertexCount; i++) {
+            int off = i * 3;
+            float oldX = m.vertices[off];
+            float oldY = m.vertices[off + 1];
+            float oldZ = m.vertices[off + 2];
+            
+            if (mirrorSwapXZ) {
+                m.vertices[off] = oldZ * s;
+                m.vertices[off + 1] = oldY * s;
+                m.vertices[off + 2] = oldX * s;
+            } else {
+                m.vertices[off] = oldX * s;
+                m.vertices[off + 1] = oldY * s;
+                m.vertices[off + 2] = oldZ * s;
+            }
+        }
+        
+        if (mirrorSwapXZ) {
+            // Mirroring changes handedness, we must reverse triangle winding to not break backface culling
+            for (int i = 0; i < m.faceCount; i++) {
+                int off = i * 3;
+                int vTmp = m.vIndices[off + 1];
+                m.vIndices[off + 1] = m.vIndices[off + 2];
+                m.vIndices[off + 2] = vTmp;
+                
+                int uvTmp = m.uvIndices[off + 1];
+                m.uvIndices[off + 1] = m.uvIndices[off + 2];
+                m.uvIndices[off + 2] = uvTmp;
+            }
         }
         float maxSq = 0;
-        for (float[] v : m.vertices) {
-            float sq = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+        for (int i = 0; i < m.vertexCount; i++) {
+            int off = i * 3;
+            float vx = m.vertices[off];
+            float vy = m.vertices[off + 1];
+            float vz = m.vertices[off + 2];
+            float sq = vx*vx + vy*vy + vz*vz;
             if (sq > maxSq) maxSq = sq;
         }
         m.boundingRadius = (float) Math.sqrt(maxSq);

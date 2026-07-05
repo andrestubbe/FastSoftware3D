@@ -8,6 +8,7 @@ import java.util.Arrays;
  * allocates memory itself.
  */
 public final class Framebuffer {
+    public static final float EMPTY_DEPTH = Float.MAX_VALUE;
 
     public final int width;
     public final int height;
@@ -27,6 +28,6 @@ public final class Framebuffer {
      * Reset depth buffer; pixel clearing is the caller's responsibility.
      */
     public void clearDepth() {
-        Arrays.fill(zBuffer, Float.MAX_VALUE);
+        Arrays.fill(zBuffer, EMPTY_DEPTH);
     }
 }

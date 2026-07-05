@@ -1,7 +1,9 @@
 package fastsoftware3d.scene;
 
 import java.awt.BasicStroke;
+import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 
 public final class SceneUtilities {
 
@@ -13,7 +15,7 @@ public final class SceneUtilities {
         float offsetY = worldTransform.y;
         float offsetZ = worldTransform.z;
 
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
         for (int i = -halfGrid; i <= halfGrid; i++) {
             float coord = i * spacing;
@@ -24,6 +26,11 @@ public final class SceneUtilities {
         }
     }
 
+    /**
+     * Draws a 3D world-space line. 
+     * Note: This method allocates a few float[] objects per call (transformToCamera, project).
+     * Since this is purely for debug geometry (e.g. grids), zero-allocation optimization is intentionally omitted here to keep the code simple.
+     */
     private static void drawWorldLine(Graphics2D g, Renderer3D renderer, float x1, float y1, float z1, float x2, float y2, float z2, boolean isCenter) {
         float[] c1 = renderer.transformToCamera(x1, y1, z1);
         float[] c2 = renderer.transformToCamera(x2, y2, z2);
@@ -47,10 +54,10 @@ public final class SceneUtilities {
         if (p1 == null || p2 == null) return;
 
         if (isCenter) {
-            g.setColor(java.awt.Color.WHITE);
+            g.setColor(Color.WHITE);
             g.setStroke(new BasicStroke(2.0f));
         } else {
-            g.setColor(java.awt.Color.GRAY);
+            g.setColor(Color.GRAY);
             g.setStroke(new BasicStroke(1.0f));
         }
 
