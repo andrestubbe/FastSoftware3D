@@ -21,6 +21,49 @@ To achieve a completely responsive, zero-latency desktop experience, FastSoftwar
 
 ---
 
+## Quick Start — Desktop Demo
+
+```java
+import fastsoftware3d.camera.Camera;
+import fastsoftware3d.core.Framebuffer;
+import fastsoftware3d.core.RenderPipeline;
+import fastsoftware3d.rasterizer.NativeRasterizer;
+import fastsoftware3d.scene.ModelNode;
+import fastsoftware3d.scene.Scene;
+import fastsoftware3d.scene.Renderer3D;
+import fastsoftware3d.model.ObjLoader;
+import fastsoftware3d.material.Material;
+
+public class Demo {
+    public static void main(String[] args) throws Exception {
+        // 1. Setup Camera and Framebuffer
+        Camera camera = new Camera(0, 0, -10, 0, 0, 60);
+        int[] pixels = new int[800 * 600];
+        Framebuffer fb = new Framebuffer(800, 600, pixels);
+        
+        // 2. Instantiate Render Pipeline
+        RenderPipeline pipeline = new RenderPipeline(camera, fb, new NativeRasterizer());
+        Renderer3D renderer = new Renderer3D(pipeline);
+        
+        // 3. Create Scene and load models
+        Scene scene = new Scene();
+        ObjLoader.ModelData model = ObjLoader.load("docs/room.obj");
+        Material wallMat = Material.fromPng("docs/wall.png");
+        
+        scene.getRoot().addChild(new ModelNode(model, wallMat));
+        
+        // 4. Render Frame
+        renderer.clear();
+        scene.render(renderer, null);
+        pipeline.postProcess();
+    }
+}
+```
+
+---
+
+---
+
 ## Table of Contents
 
 - [Why FastSoftware3D?](#why-fastsoftware3d)
@@ -81,46 +124,6 @@ Measured on a standard desktop window rendering the textured Wolfenstein level a
 
 ---
 
-## Quick Start — Desktop Demo
-
-```java
-import fastsoftware3d.camera.Camera;
-import fastsoftware3d.core.Framebuffer;
-import fastsoftware3d.core.RenderPipeline;
-import fastsoftware3d.rasterizer.NativeRasterizer;
-import fastsoftware3d.scene.ModelNode;
-import fastsoftware3d.scene.Scene;
-import fastsoftware3d.scene.Renderer3D;
-import fastsoftware3d.model.ObjLoader;
-import fastsoftware3d.material.Material;
-
-public class Demo {
-    public static void main(String[] args) throws Exception {
-        // 1. Setup Camera and Framebuffer
-        Camera camera = new Camera(0, 0, -10, 0, 0, 60);
-        int[] pixels = new int[800 * 600];
-        Framebuffer fb = new Framebuffer(800, 600, pixels);
-        
-        // 2. Instantiate Render Pipeline
-        RenderPipeline pipeline = new RenderPipeline(camera, fb, new NativeRasterizer());
-        Renderer3D renderer = new Renderer3D(pipeline);
-        
-        // 3. Create Scene and load models
-        Scene scene = new Scene();
-        ObjLoader.ModelData model = ObjLoader.load("docs/room.obj");
-        Material wallMat = Material.fromPng("docs/wall.png");
-        
-        scene.getRoot().addChild(new ModelNode(model, wallMat));
-        
-        // 4. Render Frame
-        renderer.clear();
-        scene.render(renderer, null);
-        pipeline.postProcess();
-    }
-}
-```
-
----
 
 ## API Quick Reference
 
