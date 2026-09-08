@@ -15,7 +15,7 @@ To achieve a completely responsive, zero-latency desktop experience, FastSoftwar
 * 🎬 **[FastAnimation](https://github.com/andrestubbe/FastAnimation)** — Direct-memory frame animation and timeline synchronization.
 * 🚀 **[FastTerminal3D](https://github.com/andrestubbe/FastTerminal3D)** — For rendering the 3D pipeline directly into a command console viewport.
 
----
+Watch Demo (YouTube) | Watch JMH Benchmark (YouTube)
 
 [![FastSoftware3D Showcase](docs/screenshot.png)](docs/screenshot.png)
 
